@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  LIBRARIAN
+  MEMBER
+}
+
+enum LoanStatus {
+  REQUESTED
+  ISSUED
+  RETURNED
+  LOST
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  email        String        @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  loans         Loan[]
+  loanHistories LoanHistory[]
+  custodians    Custodian[]
+
+  @@map("users")
+}
+
+model Item {
+  id              Int         @id @default(autoincrement())
+  title           String
+  category        String
+  identifyingCode String      @unique
+  archived        Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  loans      Loan[]
+  custodians Custodian[]
+
+  @@map("items")
+}
+
+model Loan {
+  id          Int         @id @default(autoincrement())
+  itemId      Int
+  borrowerId  Int
+  requestedAt DateTime    @default(now())
+  dueDate     DateTime?
+  status      LoanStatus  @default(REQUESTED)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  item      Item          @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  borrower  User          @relation(fields: [borrowerId], references: [id], onDelete: Restrict)
+  histories LoanHistory[]
+
+  @@map("loans")
+}
+
+model LoanHistory {
+  id        Int        @id @default(autoincrement())
+  loanId    Int
+  type      LoanStatus
+  userId    Int
+  createdAt DateTime   @default(now())
+  note      String?
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("loan_histories")
+}
+
+model Custodian {
+  itemId      Int
+  librarianId Int
+
+  item      Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  librarian User @relation(fields: [librarianId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, librarianId])
+  @@map("custodians")
+}
