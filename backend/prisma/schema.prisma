@@ -19,6 +19,13 @@ enum LoanStatus {
   LOST
 }
 
+enum LoanHistoryType {
+  REQUESTED
+  ISSUED
+  RETURNED
+  LOST
+}
+
 model User {
   id           Int           @id @default(autoincrement())
   email        String        @unique
@@ -46,6 +53,8 @@ model Item {
   loans      Loan[]
   custodians Custodian[]
 
+  @@index([archived])
+  @@index([category])
   @@map("items")
 }
 
@@ -63,20 +72,28 @@ model Loan {
   borrower  User          @relation(fields: [borrowerId], references: [id], onDelete: Restrict)
   histories LoanHistory[]
 
+  @@index([itemId])
+  @@index([borrowerId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([requestedAt])
+  @@index([status, dueDate])
   @@map("loans")
 }
 
 model LoanHistory {
-  id        Int        @id @default(autoincrement())
+  id        Int             @id @default(autoincrement())
   loanId    Int
-  type      LoanStatus
+  type      LoanHistoryType
   userId    Int
-  createdAt DateTime   @default(now())
+  createdAt DateTime        @default(now())
   note      String?
 
-  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Restrict)
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
+  @@index([loanId, createdAt])
+  @@index([userId])
   @@map("loan_histories")
 }
 
@@ -88,5 +105,6 @@ model Custodian {
   librarian User @relation(fields: [librarianId], references: [id], onDelete: Cascade)
 
   @@id([itemId, librarianId])
+  @@index([librarianId])
   @@map("custodians")
 }

@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const bcrypt = require('bcryptjs');
-const { PrismaClient, Role, LoanStatus } = require('@prisma/client');
+const { PrismaClient, Role, LoanStatus, LoanHistoryType } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
@@ -179,14 +179,14 @@ async function main() {
     data: [
       {
         loanId: loan1.id,
-        type: LoanStatus.REQUESTED,
+        type: LoanHistoryType.REQUESTED,
         userId: member1.id,
         createdAt: twoWeeksAgo,
         note: 'Requested for weekend photo shoot',
       },
       {
         loanId: loan1.id,
-        type: LoanStatus.ISSUED,
+        type: LoanHistoryType.ISSUED,
         userId: librarian1.id,
         createdAt: oneWeekAgo,
         note: 'Issued with 2 batteries and 64GB SD card',
@@ -209,14 +209,14 @@ async function main() {
     data: [
       {
         loanId: loan2.id,
-        type: LoanStatus.REQUESTED,
+        type: LoanHistoryType.REQUESTED,
         userId: member2.id,
         createdAt: twoWeeksAgo,
         note: 'Podcast recording session',
       },
       {
         loanId: loan2.id,
-        type: LoanStatus.ISSUED,
+        type: LoanHistoryType.ISSUED,
         userId: librarian2.id,
         createdAt: oneWeekAgo,
         note: 'Issued with XLR cable and desk mount',
@@ -239,21 +239,21 @@ async function main() {
     data: [
       {
         loanId: loan3.id,
-        type: LoanStatus.REQUESTED,
+        type: LoanHistoryType.REQUESTED,
         userId: member3.id,
         createdAt: twoWeeksAgo,
         note: 'Studio interview lighting',
       },
       {
         loanId: loan3.id,
-        type: LoanStatus.ISSUED,
+        type: LoanHistoryType.ISSUED,
         userId: librarian1.id,
         createdAt: twoWeeksAgo,
         note: 'Issued with softbox and carrying case',
       },
       {
         loanId: loan3.id,
-        type: LoanStatus.RETURNED,
+        type: LoanHistoryType.RETURNED,
         userId: librarian1.id,
         createdAt: oneWeekAgo,
         note: 'Returned in good condition',
@@ -275,7 +275,7 @@ async function main() {
   await prisma.loanHistory.create({
     data: {
       loanId: loan4.id,
-      type: LoanStatus.REQUESTED,
+      type: LoanHistoryType.REQUESTED,
       userId: member1.id,
       createdAt: now,
       note: 'Need for assembling shelving units',
