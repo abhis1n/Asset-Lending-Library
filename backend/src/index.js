@@ -8,6 +8,8 @@ const express = require('express');
 const cors = require('cors');
 const prisma = require('./prisma');
 const authRoutes = require('./routes/authRoutes');
+const itemRoutes = require('./routes/itemRoutes');
+const userRoutes = require('./routes/userRoutes');
 const { authenticate, requireLibrarian } = require('./middleware/auth');
 
 const app = express();
@@ -18,6 +20,8 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/items', itemRoutes);
+app.use('/api/me', userRoutes);
 
 // Protected Librarian test / verification route
 app.get('/api/librarian/verify-role', authenticate, requireLibrarian, (req, res) => {
