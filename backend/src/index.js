@@ -7,6 +7,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const express = require('express');
 const cors = require('cors');
 const prisma = require('./prisma');
+const authRoutes = require('./routes/authRoutes');
+const { authenticate, requireLibrarian } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,27 +16,37 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Routes
+app.use('/api/auth', authRoutes);
+
+// Protected Librarian test / verification route
+app.get('/api/librarian/verify-role', authenticate, requireLibrarian, (req, res) => {
+  res.status(200).json({
+    message: 'Authorized librarian access granted.',
+    user: req.user,
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    // Quick DB connectivity check
     await prisma.$queryRaw`SELECT 1`;
     res.json({
       status: 'ok',
       message: 'Asset Lending Library API is running and connected to PostgreSQL',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     res.status(500).json({
       status: 'error',
       message: 'Database connection failed',
-      error: error.message
+      error: error.message,
     });
   }
 });
 
-// Start server
-if (process.env.NODE_ENV !== 'test') {
+// Start server if executed directly
+if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
   });
