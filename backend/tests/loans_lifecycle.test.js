@@ -568,4 +568,343 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       assert.strictEqual(typeof loan.isOverdue, 'boolean');
     });
   });
+
+  // --- SECTION 6: COMPREHENSIVE TRANSITION & HISTORY ATOMICITY CHECKS ---
+
+  test('25. Explicit transition: ISSUED -> LOST succeeds and creates LOST history', async () => {
+    // Create new item and direct issued loan
+    const testItem = await prisma.item.create({
+      data: {
+        title: 'Lost Transition Test Item',
+        category: 'Test Category',
+        identifyingCode: `TST-LOST-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const createRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: testItem.id,
+        borrowerId: member1Id,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'ISSUED',
+        note: 'Initial checkout before loss',
+      }),
+    });
+    assert.strictEqual(createRes.status, 201);
+    const loan = (await createRes.json()).loan;
+
+    // Transition ISSUED -> LOST
+    const lostRes = await fetch(`${baseUrl}/api/loans/${loan.id}/lost`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({ note: 'Camera damaged and lost in field' }),
+    });
+
+    assert.strictEqual(lostRes.status, 200);
+    const lostData = await lostRes.json();
+    assert.strictEqual(lostData.loan.status, 'LOST');
+
+    // Check history
+    const histRes = await fetch(`${baseUrl}/api/loans/${loan.id}/history`, {
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    const histData = await histRes.json();
+    assert.strictEqual(histData.history.length, 2);
+    assert.strictEqual(histData.history[1].type, 'LOST');
+    assert.strictEqual(histData.history[1].note, 'Camera damaged and lost in field');
+  });
+
+  test('26. An overdue ISSUED loan still blocks a new loan request (409 Conflict)', async () => {
+    const overdueItem = await prisma.item.create({
+      data: {
+        title: 'Overdue Block Test Item',
+        category: 'Test Category',
+        identifyingCode: `TST-OVRD-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    // Create loan that is already overdue (due 3 days ago)
+    const overdueDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const createRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: overdueItem.id,
+        borrowerId: member1Id,
+        dueDate: overdueDate,
+        status: 'ISSUED',
+      }),
+    });
+    assert.strictEqual(createRes.status, 201);
+    const loan = (await createRes.json()).loan;
+    assert.strictEqual(loan.isOverdue, true);
+
+    // Another member attempts to request this overdue item
+    const reqRes = await fetch(`${baseUrl}/api/loans/request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${member2Token}`,
+      },
+      body: JSON.stringify({ itemId: overdueItem.id }),
+    });
+
+    assert.strictEqual(reqRes.status, 409);
+    const reqData = await reqRes.json();
+    assert.ok(reqData.error.includes('open loan'));
+  });
+
+  test('27. Invalid transitions: RETURNED -> ISSUED and RETURNED -> LOST are rejected (409)', async () => {
+    // Create item and return the loan
+    const testItem = await prisma.item.create({
+      data: {
+        title: 'Returned Item Transitions',
+        category: 'Test Category',
+        identifyingCode: `TST-RET-INV-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const createRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: testItem.id,
+        borrowerId: member1Id,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'ISSUED',
+      }),
+    });
+    const loan = (await createRes.json()).loan;
+
+    // Return the loan
+    const retRes = await fetch(`${baseUrl}/api/loans/${loan.id}/return`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    assert.strictEqual(retRes.status, 200);
+
+    // 27a. Attempt RETURNED -> ISSUED
+    const reIssueRes = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+    assert.strictEqual(reIssueRes.status, 409);
+    const reIssueData = await reIssueRes.json();
+    assert.ok(reIssueData.error.includes('RETURNED'));
+
+    // 27b. Attempt RETURNED -> LOST
+    const retLostRes = await fetch(`${baseUrl}/api/loans/${loan.id}/lost`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    assert.strictEqual(retLostRes.status, 409);
+    const retLostData = await retLostRes.json();
+    assert.ok(retLostData.error.includes('RETURNED'));
+  });
+
+  test('28. Invalid transitions: LOST -> ISSUED and LOST -> RETURNED are rejected (409)', async () => {
+    // Create item and mark loan as lost
+    const testItem = await prisma.item.create({
+      data: {
+        title: 'Lost Item Transitions',
+        category: 'Test Category',
+        identifyingCode: `TST-LST-INV-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const createRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: testItem.id,
+        borrowerId: member1Id,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'ISSUED',
+      }),
+    });
+    const loan = (await createRes.json()).loan;
+
+    // Mark LOST
+    const lostRes = await fetch(`${baseUrl}/api/loans/${loan.id}/lost`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    assert.strictEqual(lostRes.status, 200);
+
+    // 28a. Attempt LOST -> ISSUED
+    const reIssueRes = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+    assert.strictEqual(reIssueRes.status, 409);
+    const reIssueData = await reIssueRes.json();
+    assert.ok(reIssueData.error.includes('LOST'));
+
+    // 28b. Attempt LOST -> RETURNED
+    const lostRetRes = await fetch(`${baseUrl}/api/loans/${loan.id}/return`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    assert.strictEqual(lostRetRes.status, 409);
+    const lostRetData = await lostRetRes.json();
+    assert.ok(lostRetData.error.includes('LOST'));
+  });
+
+  test('29. Successful state transitions create exactly 1 history record; failed transitions create 0', async () => {
+    const testItem = await prisma.item.create({
+      data: {
+        title: 'History Count Test Item',
+        category: 'Test Category',
+        identifyingCode: `TST-HIST-CNT-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    // 1. Request loan -> history count = 1
+    const reqRes = await fetch(`${baseUrl}/api/loans/request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${member1Token}`,
+      },
+      body: JSON.stringify({ itemId: testItem.id }),
+    });
+    const loan = (await reqRes.json()).loan;
+
+    const hist1 = await prisma.loanHistory.count({ where: { loanId: loan.id } });
+    assert.strictEqual(hist1, 1);
+
+    // 2. Failed invalid transition (attempt return on requested) -> history count remains 1
+    const failRes = await fetch(`${baseUrl}/api/loans/${loan.id}/return`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    assert.strictEqual(failRes.status, 409);
+
+    const histAfterFail = await prisma.loanHistory.count({ where: { loanId: loan.id } });
+    assert.strictEqual(histAfterFail, 1, 'Failed transition must create zero history records');
+
+    // 3. Issue loan -> history count = 2
+    const issueRes = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+    assert.strictEqual(issueRes.status, 200);
+
+    const hist2 = await prisma.loanHistory.count({ where: { loanId: loan.id } });
+    assert.strictEqual(hist2, 2);
+
+    // 4. Return loan -> history count = 3
+    const retRes = await fetch(`${baseUrl}/api/loans/${loan.id}/return`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+    assert.strictEqual(retRes.status, 200);
+
+    const hist3 = await prisma.loanHistory.count({ where: { loanId: loan.id } });
+    assert.strictEqual(hist3, 3);
+  });
+
+  test('30. Librarian direct loan creation supports both REQUESTED and ISSUED states with atomic history', async () => {
+    // 30a. Direct REQUESTED loan
+    const itemA = await prisma.item.create({
+      data: {
+        title: 'Direct Requested Item',
+        category: 'Test',
+        identifyingCode: `DIR-REQ-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const resReq = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: itemA.id,
+        borrowerId: member1Id,
+        status: 'REQUESTED',
+        note: 'Librarian phone request on behalf of member',
+      }),
+    });
+    assert.strictEqual(resReq.status, 201);
+    const loanReq = (await resReq.json()).loan;
+    assert.strictEqual(loanReq.status, 'REQUESTED');
+    assert.strictEqual(loanReq.dueDate, null);
+
+    const histReq = await prisma.loanHistory.findMany({ where: { loanId: loanReq.id } });
+    assert.strictEqual(histReq.length, 1);
+    assert.strictEqual(histReq[0].type, 'REQUESTED');
+    assert.strictEqual(histReq[0].userId, librarianId);
+
+    // 30b. Direct ISSUED loan without dueDate is rejected (400 Bad Request)
+    const itemB = await prisma.item.create({
+      data: {
+        title: 'Direct Issued Missing Due Date',
+        category: 'Test',
+        identifyingCode: `DIR-NODUE-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const resNoDue = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: itemB.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        // missing dueDate
+      }),
+    });
+    assert.strictEqual(resNoDue.status, 400);
+
+    const loansInDb = await prisma.loan.findMany({ where: { itemId: itemB.id } });
+    assert.strictEqual(loansInDb.length, 0, 'No loan created on invalid input');
+  });
 });
+
