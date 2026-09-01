@@ -9,6 +9,7 @@ const cors = require('cors');
 const prisma = require('./prisma');
 const authRoutes = require('./routes/authRoutes');
 const itemRoutes = require('./routes/itemRoutes');
+const loanRoutes = require('./routes/loanRoutes');
 const userRoutes = require('./routes/userRoutes');
 const { authenticate, requireLibrarian } = require('./middleware/auth');
 
@@ -21,6 +22,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
+app.use('/api/loans', loanRoutes);
 app.use('/api/me', userRoutes);
 
 // Protected Librarian test / verification route
