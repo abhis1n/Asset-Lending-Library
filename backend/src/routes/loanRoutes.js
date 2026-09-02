@@ -5,6 +5,7 @@ const {
   createLoanDirect,
   issueLoan,
   returnLoan,
+  bulkReturnLoans,
   markLoanLost,
   getLoanById,
   getLoanHistory,
@@ -21,6 +22,9 @@ router.post('/request', authenticate, requestLoan);
 
 // Librarian direct loan creation
 router.post('/', authenticate, requireLibrarian, createLoanDirect);
+
+// Bulk return (Librarian only)
+router.post('/bulk-return', authenticate, requireLibrarian, bulkReturnLoans);
 
 // Loan lifecycle transitions (Librarian only)
 router.post('/:id/issue', authenticate, requireLibrarian, issueLoan);
