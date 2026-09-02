@@ -6,6 +6,7 @@ const {
   updateItem,
   archiveItem,
   restoreItem,
+  importItemsCsv,
 } = require('../controllers/itemController');
 const {
   assignCustodian,
@@ -18,6 +19,7 @@ const router = express.Router();
 
 // Catalogue item routes
 router.get('/', authenticate, getItems);
+router.post('/import', authenticate, requireLibrarian, importItemsCsv);
 router.get('/:id', authenticate, getItemById);
 router.post('/', authenticate, requireLibrarian, createItem);
 router.patch('/:id', authenticate, requireLibrarian, updateItem);
