@@ -1066,5 +1066,136 @@ body {
   color: var(--text-muted);
 }
 
+/* File Dropzone & CSV Import */
+.file-dropzone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  background-color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.file-dropzone:hover,
+.file-dropzone.dragover {
+  border-color: var(--primary-600);
+  background-color: var(--primary-50);
+}
+
+.file-info-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background-color: #f1f5f9;
+  border-radius: var(--radius-md);
+  margin-top: 1rem;
+  font-size: 0.875rem;
+}
+
+/* Import & Bulk Return Results Summary */
+.results-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.results-stat-box {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.results-stat-box.success {
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.results-stat-box.error {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.results-stat-box.neutral {
+  background-color: #f8fafc;
+  border: 1px solid var(--border-light);
+  color: var(--text-main);
+}
+
+.error-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+}
+
+.error-details-table th {
+  background-color: #fee2e2;
+  color: #991b1b;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+}
+
+.error-details-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #fecaca;
+  color: #7f1d1d;
+  vertical-align: top;
+}
+
+/* Floating / Embedded Selection Action Bar */
+.selection-action-bar {
+  background-color: #1e293b;
+  color: #ffffff;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow-md);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.selection-count-pill {
+  background-color: var(--primary-600);
+  color: #ffffff;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.checkbox-cell {
+  width: 40px;
+  text-align: center;
+}
+
+.checkbox-custom {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--primary-600);
+}
+
+
 
 

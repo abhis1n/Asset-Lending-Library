@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { LoadingSpinner, EmptyState, ErrorBanner } from '../components/common/UIStates';
@@ -6,6 +6,7 @@ import { CreateLoanModal } from '../components/loans/CreateLoanModal';
 import { IssueLoanModal } from '../components/loans/IssueLoanModal';
 import { ActionNoteModal } from '../components/loans/ActionNoteModal';
 import { LoanDetailModal } from '../components/loans/LoanDetailModal';
+import { BulkReturnModal } from '../components/loans/BulkReturnModal';
 
 export function LoansPage() {
   const { user, isLibrarian } = useAuth();
@@ -21,6 +22,7 @@ export function LoansPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Server-Side Query Filters
   const [search, setSearch] = useState('');
@@ -32,6 +34,10 @@ export function LoansPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  // Multi-selection state for Librarian Bulk Return
+  const [selectedLoanIds, setSelectedLoanIds] = useState([]);
+  const [isBulkReturnModalOpen, setIsBulkReturnModalOpen] = useState(false);
+
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -40,6 +46,31 @@ export function LoansPage() {
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionType, setActionType] = useState('return'); // 'return' | 'lost'
+
+  const buildQueryParams = useCallback(() => {
+    const params = new URLSearchParams();
+    params.append('page', String(page));
+    params.append('pageSize', String(pageSize));
+    params.append('sortBy', sortBy);
+    params.append('sortOrder', sortOrder);
+
+    if (search.trim()) {
+      params.append('search', search.trim());
+    }
+    if (status !== 'ALL') {
+      params.append('status', status);
+    }
+    if (category.trim()) {
+      params.append('category', category.trim());
+    }
+    if (overdueFilter === 'true') {
+      params.append('overdue', 'true');
+    } else if (overdueFilter === 'false') {
+      params.append('overdue', 'false');
+    }
+
+    return params;
+  }, [page, pageSize, sortBy, sortOrder, search, status, category, overdueFilter]);
 
   const fetchLoans = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -50,27 +81,7 @@ export function LoansPage() {
     setError('');
 
     try {
-      const params = new URLSearchParams();
-      params.append('page', String(page));
-      params.append('pageSize', String(pageSize));
-      params.append('sortBy', sortBy);
-      params.append('sortOrder', sortOrder);
-
-      if (search.trim()) {
-        params.append('search', search.trim());
-      }
-      if (status !== 'ALL') {
-        params.append('status', status);
-      }
-      if (category.trim()) {
-        params.append('category', category.trim());
-      }
-      if (overdueFilter === 'true') {
-        params.append('overdue', 'true');
-      } else if (overdueFilter === 'false') {
-        params.append('overdue', 'false');
-      }
-
+      const params = buildQueryParams();
       const response = await api.get(`/loans?${params.toString()}`);
       setLoans(response.loans || []);
       if (response.pagination) {
@@ -82,11 +93,47 @@ export function LoansPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [page, pageSize, sortBy, sortOrder, search, status, category, overdueFilter]);
+  }, [buildQueryParams]);
 
   useEffect(() => {
     fetchLoans();
   }, [fetchLoans]);
+
+  // Map of loans by ID for quick lookup in bulk actions
+  const loansMap = useMemo(() => {
+    const map = {};
+    loans.forEach((l) => {
+      map[l.id] = l;
+    });
+    return map;
+  }, [loans]);
+
+  // Eligible loans on current page (ISSUED only)
+  const eligibleIssuedLoans = useMemo(() => {
+    return loans.filter((l) => l.status === 'ISSUED');
+  }, [loans]);
+
+  const allEligibleSelected =
+    eligibleIssuedLoans.length > 0 &&
+    eligibleIssuedLoans.every((l) => selectedLoanIds.includes(l.id));
+
+  const handleToggleSelectAll = () => {
+    if (allEligibleSelected) {
+      // Unselect eligible on current page
+      const eligibleIds = new Set(eligibleIssuedLoans.map((l) => l.id));
+      setSelectedLoanIds((prev) => prev.filter((id) => !eligibleIds.has(id)));
+    } else {
+      // Select all eligible on current page
+      const combined = new Set([...selectedLoanIds, ...eligibleIssuedLoans.map((l) => l.id)]);
+      setSelectedLoanIds(Array.from(combined));
+    }
+  };
+
+  const handleToggleSelectLoan = (loanId) => {
+    setSelectedLoanIds((prev) =>
+      prev.includes(loanId) ? prev.filter((id) => id !== loanId) : [...prev, loanId]
+    );
+  };
 
   const handleResetFilters = () => {
     setSearch('');
@@ -96,9 +143,27 @@ export function LoansPage() {
     setSortBy('createdAt');
     setSortOrder('desc');
     setPage(1);
+    setSelectedLoanIds([]);
+  };
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    setError('');
+    try {
+      const params = buildQueryParams();
+      // Remove pagination parameters for export to export all matching records
+      params.delete('page');
+      params.delete('pageSize');
+      await api.download(`/loans/export?${params.toString()}`, 'loans-export.csv');
+    } catch (err) {
+      setError(err.message || 'Failed to export loans CSV.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleMutationSuccess = async () => {
+    setSelectedLoanIds([]);
     await fetchLoans();
   };
 
@@ -141,7 +206,7 @@ export function LoansPage() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -150,6 +215,16 @@ export function LoansPage() {
             aria-label="Refresh loans"
           >
             {refreshing ? 'Refreshing...' : '🔄 Refresh'}
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleExportCsv}
+            disabled={exporting}
+            title="Export filtered loans to CSV file"
+          >
+            {exporting ? 'Exporting...' : '⬇️ Export CSV'}
           </button>
 
           <button
@@ -174,6 +249,34 @@ export function LoansPage() {
           >
             Try Again
           </button>
+        </div>
+      )}
+
+      {/* Floating / Embedded Selection Action Bar (Librarian Bulk Actions) */}
+      {isLibrarian && selectedLoanIds.length > 0 && (
+        <div className="selection-action-bar" role="region" aria-label="Bulk selection toolbar">
+          <div className="selection-info">
+            <span className="selection-count-pill">{selectedLoanIds.length}</span>
+            <span>Loan(s) Selected</span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => setIsBulkReturnModalOpen(true)}
+            >
+              ↩️ Bulk Return ({selectedLoanIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ color: '#ffffff', borderColor: '#475569' }}
+              onClick={() => setSelectedLoanIds([])}
+            >
+              Clear
+            </button>
+          </div>
         </div>
       )}
 
@@ -314,6 +417,19 @@ export function LoansPage() {
             <table className="table" aria-label="Loans list table">
               <thead>
                 <tr>
+                  {isLibrarian && (
+                    <th scope="col" className="checkbox-cell">
+                      <input
+                        type="checkbox"
+                        className="checkbox-custom"
+                        checked={allEligibleSelected}
+                        onChange={handleToggleSelectAll}
+                        disabled={eligibleIssuedLoans.length === 0}
+                        title="Select all eligible issued loans on this page"
+                        aria-label="Select all eligible issued loans on this page"
+                      />
+                    </th>
+                  )}
                   <th scope="col" style={{ width: '80px' }}>ID</th>
                   <th scope="col">Equipment Item</th>
                   <th scope="col">Borrower</th>
@@ -324,90 +440,110 @@ export function LoansPage() {
                 </tr>
               </thead>
               <tbody>
-                {loans.map((loan) => (
-                  <tr key={loan.id}>
-                    <td>
-                      <span style={{ fontWeight: '700', color: 'var(--text-muted)' }}>#{loan.id}</span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>
-                        {loan.item?.title || `Item #${loan.itemId}`}
-                      </div>
-                      <div style={{ marginTop: '0.2rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                        <span className="badge-code">{loan.item?.identifyingCode}</span>
-                        <span className="badge-category">{loan.item?.category}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: '500' }}>
-                        {loan.borrower?.email || `User #${loan.borrowerId}`}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                        ID: {loan.borrowerId}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: '0.85rem' }}>
-                      {loan.requestedAt ? new Date(loan.requestedAt).toLocaleDateString() : '—'}
-                    </td>
-                    <td style={{ fontSize: '0.85rem' }}>
-                      <span style={{ fontWeight: loan.isOverdue ? '700' : 'normal', color: loan.isOverdue ? 'var(--danger-600)' : 'inherit' }}>
-                        {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString() : '—'}
-                      </span>
-                    </td>
-                    <td>
-                      {getStatusBadge(loan.status, loan.isOverdue)}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => {
-                            setSelectedLoan(loan);
-                            setIsDetailModalOpen(true);
-                          }}
-                          title="View loan details & audit history"
-                        >
-                          Details
-                        </button>
+                {loans.map((loan) => {
+                  const isEligible = loan.status === 'ISSUED';
+                  const isSelected = selectedLoanIds.includes(loan.id);
 
-                        {/* Librarian Quick Lifecycle Actions */}
-                        {isLibrarian && (
-                          <>
-                            {loan.status === 'REQUESTED' && (
-                              <button
-                                type="button"
-                                className="btn btn-primary btn-sm"
-                                onClick={() => {
-                                  setSelectedLoan(loan);
-                                  setIsIssueModalOpen(true);
-                                }}
-                                title="Issue loan"
-                              >
-                                Issue
-                              </button>
-                            )}
+                  return (
+                    <tr key={loan.id} style={{ backgroundColor: isSelected ? '#f1f5f9' : undefined }}>
+                      {isLibrarian && (
+                        <td className="checkbox-cell">
+                          {isEligible ? (
+                            <input
+                              type="checkbox"
+                              className="checkbox-custom"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectLoan(loan.id)}
+                              aria-label={`Select loan #${loan.id} for bulk operations`}
+                            />
+                          ) : (
+                            <span style={{ color: 'var(--border-strong)' }}>—</span>
+                          )}
+                        </td>
+                      )}
+                      <td>
+                        <span style={{ fontWeight: '700', color: 'var(--text-muted)' }}>#{loan.id}</span>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>
+                          {loan.item?.title || `Item #${loan.itemId}`}
+                        </div>
+                        <div style={{ marginTop: '0.2rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                          <span className="badge-code">{loan.item?.identifyingCode}</span>
+                          <span className="badge-category">{loan.item?.category}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: '500' }}>
+                          {loan.borrower?.email || `User #${loan.borrowerId}`}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                          ID: {loan.borrowerId}
+                        </div>
+                      </td>
+                      <td style={{ fontSize: '0.85rem' }}>
+                        {loan.requestedAt ? new Date(loan.requestedAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td style={{ fontSize: '0.85rem' }}>
+                        <span style={{ fontWeight: loan.isOverdue ? '700' : 'normal', color: loan.isOverdue ? 'var(--danger-600)' : 'inherit' }}>
+                          {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString() : '—'}
+                        </span>
+                      </td>
+                      <td>
+                        {getStatusBadge(loan.status, loan.isOverdue)}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setSelectedLoan(loan);
+                              setIsDetailModalOpen(true);
+                            }}
+                            title="View loan details & audit history"
+                          >
+                            Details
+                          </button>
 
-                            {loan.status === 'ISSUED' && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => {
-                                  setSelectedLoan(loan);
-                                  setActionType('return');
-                                  setIsActionModalOpen(true);
-                                }}
-                                title="Process return"
-                              >
-                                Return
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {/* Librarian Quick Lifecycle Actions */}
+                          {isLibrarian && (
+                            <>
+                              {loan.status === 'REQUESTED' && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => {
+                                    setSelectedLoan(loan);
+                                    setIsIssueModalOpen(true);
+                                  }}
+                                  title="Issue loan"
+                                >
+                                  Issue
+                                </button>
+                              )}
+
+                              {loan.status === 'ISSUED' && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setSelectedLoan(loan);
+                                    setActionType('return');
+                                    setIsActionModalOpen(true);
+                                  }}
+                                  title="Process return"
+                                >
+                                  Return
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -469,6 +605,15 @@ export function LoansPage() {
       <CreateLoanModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={handleMutationSuccess}
+      />
+
+      {/* Bulk Return Modal (Librarian) */}
+      <BulkReturnModal
+        isOpen={isBulkReturnModalOpen}
+        onClose={() => setIsBulkReturnModalOpen(false)}
+        selectedLoanIds={selectedLoanIds}
+        loansMap={loansMap}
         onSuccess={handleMutationSuccess}
       />
 
