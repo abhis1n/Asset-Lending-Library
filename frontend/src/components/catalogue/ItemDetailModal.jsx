@@ -19,10 +19,21 @@ export function ItemDetailModal({
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState('');
 
-  if (!isOpen || !item) return null;
-
   const isAssignedMyself =
-    user && item.custodians?.some((c) => c.id === user.id);
+    user && item?.custodians?.some((c) => c.id === user.id);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !assigning) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, assigning, onClose]);
+
+  if (!isOpen || !item) return null;
 
   const handleAssignCustodian = async (targetLibrarianId) => {
     if (!targetLibrarianId) return;
@@ -53,11 +64,11 @@ export function ItemDetailModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="item-detail-modal-title">
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 className="modal-title">{item.title}</h2>
+            <h2 id="item-detail-modal-title" className="modal-title">{item.title}</h2>
             <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <span className="badge-code">{item.identifyingCode}</span>
               <span className="badge-category">{item.category}</span>

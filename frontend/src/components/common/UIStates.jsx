@@ -78,20 +78,31 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && onCancel) {
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="dialog-backdrop" onClick={onCancel}>
+    <div className="dialog-backdrop" onClick={onCancel} role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
       <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginBottom: '0.75rem', fontSize: '1.2rem', fontWeight: '700' }}>{title}</h3>
+        <h3 id="confirm-dialog-title" style={{ marginBottom: '0.75rem', fontSize: '1.2rem', fontWeight: '700' }}>{title}</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.925rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
           {message}
         </p>
         <div className="dialog-actions">
-          <button className="btn btn-secondary" onClick={onCancel}>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>
             {cancelText}
           </button>
-          <button className={`btn ${isDanger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>
+          <button type="button" className={`btn ${isDanger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>
             {confirmText}
           </button>
         </div>

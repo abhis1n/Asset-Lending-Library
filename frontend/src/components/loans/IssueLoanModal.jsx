@@ -17,7 +17,15 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
     setDueDate(defaultDate.toISOString().slice(0, 10)); // YYYY-MM-DD
     setNote('');
     setApiError('');
-  }, [isOpen]);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, submitting, onClose]);
 
   if (!isOpen || !loan) return null;
 
@@ -43,10 +51,10 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="issue-loan-modal-title">
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Issue Equipment Loan #{loan.id}</h2>
+          <h2 id="issue-loan-modal-title" className="modal-title">Issue Equipment Loan #{loan.id}</h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close modal">
             &times;
           </button>

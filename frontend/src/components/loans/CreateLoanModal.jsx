@@ -49,7 +49,15 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
     setErrors({});
     setApiError('');
     setNote('');
-  }, [isOpen]);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, submitting, onClose]);
 
   if (!isOpen) return null;
 
@@ -106,10 +114,10 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="create-loan-modal-title">
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">
+          <h2 id="create-loan-modal-title" className="modal-title">
             {isLibrarian ? 'Create Loan Directly' : 'Request Equipment Loan'}
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close modal">

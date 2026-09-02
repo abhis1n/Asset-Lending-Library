@@ -13,7 +13,17 @@ export function ActionNoteModal({ isOpen, onClose, loan, actionType, onSuccess }
   useEffect(() => {
     setNote('');
     setApiError('');
-  }, [isOpen]);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, submitting, onClose]);
 
   if (!isOpen || !loan) return null;
 
@@ -39,10 +49,10 @@ export function ActionNoteModal({ isOpen, onClose, loan, actionType, onSuccess }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="action-note-modal-title">
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">
+          <h2 id="action-note-modal-title" className="modal-title">
             {isLost ? 'Mark Loan as Lost' : 'Process Loan Return'} #{loan.id}
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close modal">
