@@ -1018,10 +1018,111 @@ async function getMyLoans(req, res) {
   }
 }
 
+/**
+ * Shared helper returning the Prisma query condition for overdue loans.
+ * An overdue loan is strictly: status === 'ISSUED' AND dueDate < now.
+ */
+function getOverdueCondition(now = new Date()) {
+  return {
+    status: LoanStatus.ISSUED,
+    dueDate: { lt: now },
+  };
+}
+
+/**
+ * GET /api/loans/overdue
+ * Librarian retrieves overdue loan alerts.
+ * Overdue condition: status = ISSUED AND dueDate < NOW().
+ * Sorted by dueDate ASC (most overdue first), id DESC.
+ */
+async function getOverdueAlerts(req, res) {
+  try {
+    const { category, search } = req.query;
+    const now = new Date();
+
+    const where = {
+      ...getOverdueCondition(now),
+    };
+
+    if (category !== undefined && typeof category === 'string' && category.trim()) {
+      where.item = {
+        ...where.item,
+        category: {
+          equals: category.trim(),
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (search !== undefined && typeof search === 'string' && search.trim()) {
+      const cleanSearch = search.trim();
+      where.AND = where.AND || [];
+      where.AND.push({
+        OR: [
+          { item: { title: { contains: cleanSearch, mode: 'insensitive' } } },
+          { item: { identifyingCode: { contains: cleanSearch, mode: 'insensitive' } } },
+          { borrower: { email: { contains: cleanSearch, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    const loans = await prisma.loan.findMany({
+      where,
+      orderBy: [{ dueDate: 'asc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        itemId: true,
+        borrowerId: true,
+        requestedAt: true,
+        dueDate: true,
+        status: true,
+        item: {
+          select: {
+            title: true,
+            identifyingCode: true,
+            category: true,
+          },
+        },
+        borrower: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    });
+
+    const overdueLoans = loans.map((loan) => ({
+      loanId: loan.id,
+      itemId: loan.itemId,
+      itemTitle: loan.item ? loan.item.title : null,
+      identifyingCode: loan.item ? loan.item.identifyingCode : null,
+      category: loan.item ? loan.item.category : null,
+      borrowerId: loan.borrowerId,
+      borrowerEmail: loan.borrower ? loan.borrower.email : null,
+      requestedAt: loan.requestedAt,
+      dueDate: loan.dueDate,
+      status: loan.status,
+      isOverdue: true,
+    }));
+
+    return res.status(200).json({
+      total: overdueLoans.length,
+      overdueLoans,
+    });
+  } catch (error) {
+    console.error('Error fetching overdue loan alerts:', error);
+    return res.status(500).json({
+      error: 'An unexpected error occurred while fetching overdue alerts.',
+    });
+  }
+}
+
 module.exports = {
   getLoans,
   exportLoansCsv,
   buildLoanQuery,
+  getOverdueAlerts,
+  getOverdueCondition,
   requestLoan,
   createLoanDirect,
   issueLoan,
@@ -1034,5 +1135,6 @@ module.exports = {
   getMyLoans,
   formatLoan,
 };
+
 
 
