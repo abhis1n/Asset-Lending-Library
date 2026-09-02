@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   getLoans,
+  exportLoansCsv,
   requestLoan,
   createLoanDirect,
   issueLoan,
@@ -16,6 +17,9 @@ const router = express.Router();
 
 // Loan listing with search, filters, sorting, pagination
 router.get('/', authenticate, getLoans);
+
+// Loan export as CSV (Members scoped, Librarians all)
+router.get('/export', authenticate, exportLoansCsv);
 
 // Member loan request
 router.post('/request', authenticate, requestLoan);
