@@ -362,6 +362,57 @@ async function issueLoan(req, res) {
 }
 
 /**
+ * Reusable helper to process a single loan return inside an atomic database transaction.
+ * Validates existence and ISSUED status, transitions to RETURNED, and records immutable history.
+ */
+async function processSingleReturn(loanId, librarianId, note = null) {
+  return await prisma.$transaction(async (tx) => {
+    const loan = await tx.loan.findUnique({
+      where: { id: loanId },
+      include: { item: true, borrower: true },
+    });
+
+    if (!loan) {
+      throw { status: 404, message: `Loan with ID ${loanId} not found.` };
+    }
+
+    // Check state machine transition
+    if (loan.status !== LoanStatus.ISSUED) {
+      throw {
+        status: 409,
+        message: `Cannot return loan ${loanId} with status '${loan.status}'. Only loans in 'ISSUED' status can be returned.`,
+      };
+    }
+
+    // Update Loan
+    const updatedLoan = await tx.loan.update({
+      where: { id: loanId },
+      data: {
+        status: LoanStatus.RETURNED,
+      },
+      include: {
+        item: true,
+        borrower: {
+          select: { id: true, email: true, role: true },
+        },
+      },
+    });
+
+    // Create immutable history record
+    await tx.loanHistory.create({
+      data: {
+        loanId: updatedLoan.id,
+        type: LoanHistoryType.RETURNED,
+        userId: librarianId,
+        note: note && typeof note === 'string' ? note.trim() : null,
+      },
+    });
+
+    return updatedLoan;
+  });
+}
+
+/**
  * POST /api/loans/:id/return
  * Librarian processes return of an issued loan.
  * Valid transition: ISSUED -> RETURNED
@@ -369,61 +420,18 @@ async function issueLoan(req, res) {
 async function returnLoan(req, res) {
   try {
     const loanId = parseInt(req.params.id, 10);
-    const { note } = req.body;
+    const { note } = req.body || {};
     const librarianId = req.user.id;
 
     if (isNaN(loanId)) {
       return res.status(400).json({ error: 'Invalid loan ID.' });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const loan = await tx.loan.findUnique({
-        where: { id: loanId },
-        include: { item: true, borrower: true },
-      });
-
-      if (!loan) {
-        throw { status: 404, message: `Loan with ID ${loanId} not found.` };
-      }
-
-      // Check state machine transition
-      if (loan.status !== LoanStatus.ISSUED) {
-        throw {
-          status: 409,
-          message: `Cannot return loan ${loanId} with status '${loan.status}'. Only loans in 'ISSUED' status can be returned.`,
-        };
-      }
-
-      // Update Loan
-      const updatedLoan = await tx.loan.update({
-        where: { id: loanId },
-        data: {
-          status: LoanStatus.RETURNED,
-        },
-        include: {
-          item: true,
-          borrower: {
-            select: { id: true, email: true, role: true },
-          },
-        },
-      });
-
-      // Create immutable history record
-      await tx.loanHistory.create({
-        data: {
-          loanId: updatedLoan.id,
-          type: LoanHistoryType.RETURNED,
-          userId: librarianId,
-          note: note && typeof note === 'string' ? note.trim() : null,
-        },
-      });
-
-      return updatedLoan;
-    });
+    const updatedLoan = await processSingleReturn(loanId, librarianId, note);
 
     return res.status(200).json({
       message: 'Loan returned successfully.',
-      loan: formatLoan(result),
+      loan: formatLoan(updatedLoan),
     });
   } catch (error) {
     if (error.status) {
@@ -435,6 +443,89 @@ async function returnLoan(req, res) {
     });
   }
 }
+
+/**
+ * POST /api/loans/bulk-return
+ * Librarian bulk returns multiple loans in one request.
+ * Each loan is processed independently in its own atomic transaction.
+ */
+async function bulkReturnLoans(req, res) {
+  try {
+    const { loanIds, note } = req.body || {};
+    const librarianId = req.user.id;
+
+    if (!loanIds || !Array.isArray(loanIds)) {
+      return res.status(400).json({
+        error: 'loanIds must be an array of integer loan IDs.',
+      });
+    }
+
+    if (loanIds.length === 0) {
+      return res.status(400).json({
+        error: 'loanIds array must contain at least one loan ID.',
+      });
+    }
+
+    if (loanIds.length > 500) {
+      return res.status(400).json({
+        error: `Batch exceeds maximum limit of 500 loan IDs. Received ${loanIds.length}.`,
+      });
+    }
+
+    for (let i = 0; i < loanIds.length; i++) {
+      const id = loanIds[i];
+      if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({
+          error: `Invalid loan ID at index ${i}: '${id}'. All loanIds must be positive integers.`,
+        });
+      }
+    }
+
+    const returnedLoans = [];
+    const errors = [];
+    const seenLoanIds = new Set();
+
+    for (const loanId of loanIds) {
+      if (seenLoanIds.has(loanId)) {
+        errors.push({
+          loanId,
+          error: `Duplicate loan ID ${loanId} in request. Each loan ID can only be processed once per batch.`,
+        });
+        continue;
+      }
+      seenLoanIds.add(loanId);
+
+      try {
+        const updated = await processSingleReturn(loanId, librarianId, note);
+        returnedLoans.push({
+          loanId: updated.id,
+          status: updated.status,
+          loan: formatLoan(updated),
+        });
+      } catch (err) {
+        errors.push({
+          loanId,
+          error: err.message || 'Failed to return loan.',
+        });
+      }
+    }
+
+    return res.status(200).json({
+      message: `Bulk return completed: ${returnedLoans.length} returned, ${errors.length} failed.`,
+      total: loanIds.length,
+      successful: returnedLoans.length,
+      failed: errors.length,
+      returnedLoans,
+      errors,
+    });
+  } catch (error) {
+    console.error('Error during bulk return of loans:', error);
+    return res.status(500).json({
+      error: 'An unexpected error occurred during bulk return of loans.',
+    });
+  }
+}
+
 
 /**
  * POST /api/loans/:id/lost
@@ -821,9 +912,12 @@ module.exports = {
   createLoanDirect,
   issueLoan,
   returnLoan,
+  bulkReturnLoans,
+  processSingleReturn,
   markLoanLost,
   getLoanById,
   getLoanHistory,
   getMyLoans,
   formatLoan,
 };
+
