@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.text({ type: ['text/csv', 'text/plain', 'application/csv'], limit: '5mb' }));
 
 // Routes
 app.use('/api/auth', authRoutes);
