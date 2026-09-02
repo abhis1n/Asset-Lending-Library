@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { LoadingSpinner, EmptyState, ErrorBanner, ConfirmDialog } from '../components/common/UIStates';
 import { ItemFormModal } from '../components/catalogue/ItemFormModal';
 import { ItemDetailModal } from '../components/catalogue/ItemDetailModal';
+import { CsvImportModal } from '../components/catalogue/CsvImportModal';
 
 export function CataloguePage() {
   const { isLibrarian } = useAuth();
@@ -21,6 +22,7 @@ export function CataloguePage() {
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -192,16 +194,27 @@ export function CataloguePage() {
           </button>
 
           {isLibrarian && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                setEditingItem(null);
-                setIsFormModalOpen(true);
-              }}
-            >
-              ➕ Add New Item
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setIsImportModalOpen(true)}
+                title="Bulk import items from CSV"
+              >
+                📥 Import CSV
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setEditingItem(null);
+                  setIsFormModalOpen(true);
+                }}
+              >
+                ➕ Add New Item
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -460,6 +473,15 @@ export function CataloguePage() {
           fetchItems();
         }}
         editItem={editingItem}
+      />
+
+      {/* CSV Import Modal (Librarian) */}
+      <CsvImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => {
+          fetchItems();
+        }}
       />
 
       {/* Item Detail / Manage Custodians Modal */}
