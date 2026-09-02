@@ -1,5 +1,6 @@
 const express = require('express');
 const {
+  getLoans,
   requestLoan,
   createLoanDirect,
   issueLoan,
@@ -11,6 +12,9 @@ const {
 const { authenticate, requireLibrarian } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Loan listing with search, filters, sorting, pagination
+router.get('/', authenticate, getLoans);
 
 // Member loan request
 router.post('/request', authenticate, requestLoan);
