@@ -2,6 +2,7 @@ const express = require('express');
 const {
   getLoans,
   exportLoansCsv,
+  getOverdueAlerts,
   requestLoan,
   createLoanDirect,
   issueLoan,
@@ -21,8 +22,12 @@ router.get('/', authenticate, getLoans);
 // Loan export as CSV (Members scoped, Librarians all)
 router.get('/export', authenticate, exportLoansCsv);
 
+// Overdue loan alerts (Librarian only)
+router.get('/overdue', authenticate, requireLibrarian, getOverdueAlerts);
+
 // Member loan request
 router.post('/request', authenticate, requestLoan);
+
 
 // Librarian direct loan creation
 router.post('/', authenticate, requireLibrarian, createLoanDirect);

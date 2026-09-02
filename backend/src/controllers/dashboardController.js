@@ -1,5 +1,6 @@
 const { LoanStatus } = require('@prisma/client');
 const prisma = require('../prisma');
+const { getOverdueCondition } = require('./loanController');
 
 /**
  * GET /api/dashboard
@@ -31,12 +32,10 @@ async function getDashboard(req, res) {
 
       // Dynamic overdue loans count: status === ISSUED AND dueDate < now
       prisma.loan.count({
-        where: {
-          status: LoanStatus.ISSUED,
-          dueDate: { lt: now },
-        },
+        where: getOverdueCondition(now),
       }),
     ]);
+
 
     const totalCatalogue = activeItems + archivedItems;
     const openLoans = requestedLoans + issuedLoans;
