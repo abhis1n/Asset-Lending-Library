@@ -24,7 +24,17 @@ export function ItemFormModal({ isOpen, onClose, onSuccess, editItem = null }) {
     }
     setErrors({});
     setApiError('');
-  }, [editItem, isOpen]);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editItem, isOpen, submitting, onClose]);
 
   if (!isOpen) return null;
 
@@ -74,7 +84,7 @@ export function ItemFormModal({ isOpen, onClose, onSuccess, editItem = null }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={isEditing ? 'Edit Catalogue Item' : 'Add New Catalogue Item'}>
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">{isEditing ? 'Edit Catalogue Item' : 'Add New Catalogue Item'}</h2>

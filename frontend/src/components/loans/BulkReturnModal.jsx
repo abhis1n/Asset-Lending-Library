@@ -8,6 +8,17 @@ export function BulkReturnModal({ isOpen, onClose, selectedLoanIds, loansMap, on
   const [apiError, setApiError] = useState('');
   const [result, setResult] = useState(null);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, submitting, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -32,10 +43,10 @@ export function BulkReturnModal({ isOpen, onClose, selectedLoanIds, loansMap, on
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="bulk-return-modal-title">
       <div className="modal-container" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Bulk Return Equipment Loans</h2>
+          <h2 id="bulk-return-modal-title" className="modal-title">Bulk Return Equipment Loans</h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close modal">
             &times;
           </button>

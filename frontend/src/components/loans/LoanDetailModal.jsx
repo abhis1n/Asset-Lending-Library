@@ -32,7 +32,15 @@ export function LoanDetailModal({
     };
 
     fetchHistory();
-  }, [isOpen, loan]);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, loan, onClose]);
 
   if (!isOpen || !loan) return null;
 
@@ -57,11 +65,11 @@ export function LoanDetailModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="loan-detail-modal-title">
       <div className="modal-container" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 className="modal-title">Loan Details #{loan.id}</h2>
+            <h2 id="loan-detail-modal-title" className="modal-title">Loan Details #{loan.id}</h2>
             <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               {getStatusBadge(loan.status, loan.isOverdue)}
             </div>

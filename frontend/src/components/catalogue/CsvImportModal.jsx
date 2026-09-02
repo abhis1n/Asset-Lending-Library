@@ -11,6 +11,17 @@ export function CsvImportModal({ isOpen, onClose, onSuccess }) {
   const [result, setResult] = useState(null);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !uploading) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, uploading, onClose]);
+
   if (!isOpen) return null;
 
   const handleFileSelect = (selectedFile) => {
@@ -84,10 +95,10 @@ export function CsvImportModal({ isOpen, onClose, onSuccess }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="csv-import-modal-title">
       <div className="modal-container" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Bulk Import Catalogue Items (CSV)</h2>
+          <h2 id="csv-import-modal-title" className="modal-title">Bulk Import Catalogue Items (CSV)</h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close modal">
             &times;
           </button>
