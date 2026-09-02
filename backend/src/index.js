@@ -11,6 +11,7 @@ const authRoutes = require('./routes/authRoutes');
 const itemRoutes = require('./routes/itemRoutes');
 const loanRoutes = require('./routes/loanRoutes');
 const userRoutes = require('./routes/userRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const { authenticate, requireLibrarian } = require('./middleware/auth');
 
 const app = express();
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/me', userRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Protected Librarian test / verification route
 app.get('/api/librarian/verify-role', authenticate, requireLibrarian, (req, res) => {
