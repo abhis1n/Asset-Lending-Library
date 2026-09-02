@@ -1,4 +1,5 @@
 const { LoanStatus, LoanHistoryType } = require('@prisma/client');
+const { stringify } = require('csv-stringify/sync');
 const prisma = require('../prisma');
 
 /**
@@ -711,6 +712,115 @@ async function getLoanHistory(req, res) {
 }
 
 /**
+ * Shared helper to build and validate where and orderBy clauses for loan queries.
+ * Used by both GET /api/loans (listing) and GET /api/loans/export (CSV export).
+ */
+function buildLoanQuery({ user, query }) {
+  const {
+    search,
+    status,
+    category,
+    borrowerId,
+    overdue,
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
+  } = query;
+
+  // 1. Validate Sorting
+  const validSortFields = ['requestedAt', 'dueDate', 'createdAt', 'status'];
+  if (!validSortFields.includes(sortBy)) {
+    return {
+      error: `Invalid sortBy field '${sortBy}'. Allowed values: ${validSortFields.join(', ')}.`,
+    };
+  }
+
+  const normalizedSortOrder = sortOrder.toLowerCase();
+  if (!['asc', 'desc'].includes(normalizedSortOrder)) {
+    return {
+      error: `Invalid sortOrder '${sortOrder}'. Allowed values: asc, desc.`,
+    };
+  }
+
+  // 2. Construct Where Clause
+  const where = {};
+
+  // Member Scoping vs Librarian Filtering
+  if (user.role === 'MEMBER') {
+    where.borrowerId = user.id;
+  } else if (borrowerId !== undefined) {
+    const parsedBorrowerId = parseInt(borrowerId, 10);
+    if (isNaN(parsedBorrowerId) || parsedBorrowerId < 1) {
+      return {
+        error: 'Invalid borrowerId. Must be a positive integer.',
+      };
+    }
+    where.borrowerId = parsedBorrowerId;
+  }
+
+  // Status Filter
+  if (status !== undefined) {
+    const validStatuses = Object.values(LoanStatus);
+    if (!validStatuses.includes(status)) {
+      return {
+        error: `Invalid status filter '${status}'. Allowed values: ${validStatuses.join(', ')}.`,
+      };
+    }
+    where.status = status;
+  }
+
+  // Category Filter (Item Relation)
+  if (category !== undefined && typeof category === 'string' && category.trim()) {
+    where.item = {
+      ...where.item,
+      category: {
+        equals: category.trim(),
+        mode: 'insensitive',
+      },
+    };
+  }
+
+  // Overdue Filter
+  if (overdue !== undefined) {
+    const now = new Date();
+    if (overdue === 'true' || overdue === '1') {
+      where.status = LoanStatus.ISSUED;
+      where.dueDate = { lt: now };
+    } else if (overdue === 'false' || overdue === '0') {
+      where.AND = where.AND || [];
+      where.AND.push({
+        OR: [
+          { status: { not: LoanStatus.ISSUED } },
+          { dueDate: null },
+          { dueDate: { gte: now } },
+        ],
+      });
+    } else {
+      return {
+        error: `Invalid overdue filter '${overdue}'. Allowed values: true, false.`,
+      };
+    }
+  }
+
+  // Search Filter (Item title, identifying code, borrower email)
+  if (search !== undefined && typeof search === 'string' && search.trim()) {
+    const cleanSearch = search.trim();
+    where.AND = where.AND || [];
+    where.AND.push({
+      OR: [
+        { item: { title: { contains: cleanSearch, mode: 'insensitive' } } },
+        { item: { identifyingCode: { contains: cleanSearch, mode: 'insensitive' } } },
+        { borrower: { email: { contains: cleanSearch, mode: 'insensitive' } } },
+      ],
+    });
+  }
+
+  // Stable Deterministic Order
+  const orderBy = [{ [sortBy]: normalizedSortOrder }, { id: 'desc' }];
+
+  return { where, orderBy };
+}
+
+/**
  * GET /api/loans
  * List loans across the library with server-side search, filtering, sorting, and pagination.
  * Members are strictly scoped to their own loans (borrowerId = req.user.id).
@@ -718,17 +828,7 @@ async function getLoanHistory(req, res) {
  */
 async function getLoans(req, res) {
   try {
-    const {
-      page = '1',
-      pageSize = '20',
-      search,
-      status,
-      category,
-      borrowerId,
-      overdue,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-    } = req.query;
+    const { page = '1', pageSize = '20' } = req.query;
 
     // 1. Validate Pagination
     const parsedPage = parseInt(page, 10);
@@ -745,98 +845,14 @@ async function getLoans(req, res) {
       });
     }
 
-    // 2. Validate Sorting
-    const validSortFields = ['requestedAt', 'dueDate', 'createdAt', 'status'];
-    if (!validSortFields.includes(sortBy)) {
-      return res.status(400).json({
-        error: `Invalid sortBy field '${sortBy}'. Allowed values: ${validSortFields.join(', ')}.`,
-      });
+    // 2. Build & validate query filters
+    const queryResult = buildLoanQuery({ user: req.user, query: req.query });
+    if (queryResult.error) {
+      return res.status(400).json({ error: queryResult.error });
     }
+    const { where, orderBy } = queryResult;
 
-    const normalizedSortOrder = sortOrder.toLowerCase();
-    if (!['asc', 'desc'].includes(normalizedSortOrder)) {
-      return res.status(400).json({
-        error: `Invalid sortOrder '${sortOrder}'. Allowed values: asc, desc.`,
-      });
-    }
-
-    // 3. Construct Where Clause
-    const where = {};
-
-    // Member Scoping vs Librarian Filtering
-    if (req.user.role === 'MEMBER') {
-      where.borrowerId = req.user.id;
-    } else if (borrowerId !== undefined) {
-      const parsedBorrowerId = parseInt(borrowerId, 10);
-      if (isNaN(parsedBorrowerId) || parsedBorrowerId < 1) {
-        return res.status(400).json({
-          error: 'Invalid borrowerId. Must be a positive integer.',
-        });
-      }
-      where.borrowerId = parsedBorrowerId;
-    }
-
-    // Status Filter
-    if (status !== undefined) {
-      const validStatuses = Object.values(LoanStatus);
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({
-          error: `Invalid status filter '${status}'. Allowed values: ${validStatuses.join(', ')}.`,
-        });
-      }
-      where.status = status;
-    }
-
-    // Category Filter (Item Relation)
-    if (category !== undefined && typeof category === 'string' && category.trim()) {
-      where.item = {
-        ...where.item,
-        category: {
-          equals: category.trim(),
-          mode: 'insensitive',
-        },
-      };
-    }
-
-    // Overdue Filter
-    if (overdue !== undefined) {
-      const now = new Date();
-      if (overdue === 'true' || overdue === '1') {
-        where.status = LoanStatus.ISSUED;
-        where.dueDate = { lt: now };
-      } else if (overdue === 'false' || overdue === '0') {
-        where.AND = where.AND || [];
-        where.AND.push({
-          OR: [
-            { status: { not: LoanStatus.ISSUED } },
-            { dueDate: null },
-            { dueDate: { gte: now } },
-          ],
-        });
-      } else {
-        return res.status(400).json({
-          error: `Invalid overdue filter '${overdue}'. Allowed values: true, false.`,
-        });
-      }
-    }
-
-    // Search Filter (Item title, identifying code, borrower email)
-    if (search !== undefined && typeof search === 'string' && search.trim()) {
-      const cleanSearch = search.trim();
-      where.AND = where.AND || [];
-      where.AND.push({
-        OR: [
-          { item: { title: { contains: cleanSearch, mode: 'insensitive' } } },
-          { item: { identifyingCode: { contains: cleanSearch, mode: 'insensitive' } } },
-          { borrower: { email: { contains: cleanSearch, mode: 'insensitive' } } },
-        ],
-      });
-    }
-
-    // 4. Stable Deterministic Order
-    const orderBy = [{ [sortBy]: normalizedSortOrder }, { id: 'desc' }];
-
-    // 5. Execute Count & Query in Parallel
+    // 3. Execute Count & Query in Parallel
     const [totalItems, loans] = await Promise.all([
       prisma.loan.count({ where }),
       prisma.loan.findMany({
@@ -873,6 +889,102 @@ async function getLoans(req, res) {
 }
 
 /**
+ * GET /api/loans/export
+ * Export loans as CSV using identical search, filtering, and sorting rules as GET /api/loans.
+ * Members are strictly scoped to their own loans.
+ * Exports all matching records without pagination.
+ */
+async function exportLoansCsv(req, res) {
+  try {
+    // 1. Build & validate query filters
+    const queryResult = buildLoanQuery({ user: req.user, query: req.query });
+    if (queryResult.error) {
+      return res.status(400).json({ error: queryResult.error });
+    }
+    const { where, orderBy } = queryResult;
+
+    // 2. Fetch all matching records without pagination, selecting only safe catalogue/borrower fields
+    const loans = await prisma.loan.findMany({
+      where,
+      orderBy,
+      select: {
+        id: true,
+        itemId: true,
+        borrowerId: true,
+        requestedAt: true,
+        dueDate: true,
+        status: true,
+        item: {
+          select: {
+            id: true,
+            title: true,
+            category: true,
+            identifyingCode: true,
+          },
+        },
+        borrower: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+    const rows = loans.map((loan) => {
+      const isOverdue =
+        loan.status === LoanStatus.ISSUED &&
+        loan.dueDate !== null &&
+        new Date(loan.dueDate) < now;
+
+      return {
+        loanId: loan.id,
+        itemId: loan.itemId,
+        itemTitle: loan.item ? loan.item.title : '',
+        category: loan.item ? loan.item.category : '',
+        identifyingCode: loan.item ? loan.item.identifyingCode : '',
+        borrowerId: loan.borrowerId,
+        borrowerEmail: loan.borrower ? loan.borrower.email : '',
+        requestedAt: loan.requestedAt ? loan.requestedAt.toISOString() : '',
+        dueDate: loan.dueDate ? loan.dueDate.toISOString() : '',
+        status: loan.status,
+        isOverdue: isOverdue ? 'true' : 'false',
+      };
+    });
+
+    const columns = [
+      { key: 'loanId', header: 'loanId' },
+      { key: 'itemId', header: 'itemId' },
+      { key: 'itemTitle', header: 'itemTitle' },
+      { key: 'category', header: 'category' },
+      { key: 'identifyingCode', header: 'identifyingCode' },
+      { key: 'borrowerId', header: 'borrowerId' },
+      { key: 'borrowerEmail', header: 'borrowerEmail' },
+      { key: 'requestedAt', header: 'requestedAt' },
+      { key: 'dueDate', header: 'dueDate' },
+      { key: 'status', header: 'status' },
+      { key: 'isOverdue', header: 'isOverdue' },
+    ];
+
+    const csvOutput = stringify(rows, {
+      header: true,
+      columns,
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="loans-export.csv"');
+    return res.status(200).send(csvOutput);
+  } catch (error) {
+    console.error('Error exporting loans as CSV:', error);
+    return res.status(500).json({
+      error: 'An unexpected error occurred while exporting loans.',
+    });
+  }
+}
+
+/**
+
  * GET /api/me/loans
  * Member retrieves their own loans.
  * Strictly anchored to req.user.id.
@@ -908,6 +1020,8 @@ async function getMyLoans(req, res) {
 
 module.exports = {
   getLoans,
+  exportLoansCsv,
+  buildLoanQuery,
   requestLoan,
   createLoanDirect,
   issueLoan,
@@ -920,4 +1034,5 @@ module.exports = {
   getMyLoans,
   formatLoan,
 };
+
 
