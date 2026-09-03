@@ -246,27 +246,53 @@ function validateDueDate(dueDate, issueDate = new Date()) {
  */
 async function createLoanDirect(req, res) {
   try {
-    const { itemId, borrowerId, dueDate, status, note } = req.body;
+    const { itemId, borrowerId, borrowerEmail, borrower: borrowerField, dueDate, status, note } = req.body;
     const librarianId = req.user.id;
 
     const parsedItemId = parseInt(itemId, 10);
-    const parsedBorrowerId = parseInt(borrowerId, 10);
+    if (isNaN(parsedItemId)) {
+      return res.status(400).json({
+        error: 'itemId is required and must be an integer.',
+      });
+    }
 
-    if (isNaN(parsedItemId) || isNaN(parsedBorrowerId)) {
+    const rawBorrower = borrowerId ?? borrowerEmail ?? borrowerField;
+    if (rawBorrower === undefined || rawBorrower === null || (typeof rawBorrower === 'string' && !rawBorrower.trim())) {
       return res.status(400).json({
         error: 'itemId and borrowerId are required and must be integers.',
       });
     }
 
-    // Verify target borrower exists and has role MEMBER
-    const borrower = await prisma.user.findUnique({
-      where: { id: parsedBorrowerId },
-    });
+    let borrower = null;
+    const borrowerStr = String(rawBorrower).trim();
 
-    if (!borrower) {
-      return res.status(404).json({
-        error: `Borrower with ID ${parsedBorrowerId} not found.`,
+    if (borrowerStr.includes('@')) {
+      // Look up by email
+      borrower = await prisma.user.findUnique({
+        where: { email: borrowerStr.toLowerCase() },
       });
+      if (!borrower) {
+        return res.status(404).json({
+          error: `Borrower with email '${borrowerStr}' not found.`,
+        });
+      }
+    } else {
+      // Look up by numeric ID
+      const parsedBorrowerId = parseInt(borrowerStr, 10);
+      if (isNaN(parsedBorrowerId) || parsedBorrowerId < 1) {
+        return res.status(400).json({
+          error: 'Invalid borrower. Must be a valid numeric ID or email address.',
+        });
+      }
+
+      borrower = await prisma.user.findUnique({
+        where: { id: parsedBorrowerId },
+      });
+      if (!borrower) {
+        return res.status(404).json({
+          error: `Borrower with ID ${parsedBorrowerId} not found.`,
+        });
+      }
     }
 
     if (borrower.role !== 'MEMBER') {
@@ -274,6 +300,8 @@ async function createLoanDirect(req, res) {
         error: 'Target borrower must have role MEMBER. Librarians cannot be assigned as loan borrowers.',
       });
     }
+
+    const resolvedBorrowerId = borrower.id;
 
     // Determine target initial status (defaults to ISSUED if status !== 'REQUESTED')
     const initialStatus = status === LoanStatus.REQUESTED ? LoanStatus.REQUESTED : LoanStatus.ISSUED;
@@ -318,7 +346,7 @@ async function createLoanDirect(req, res) {
       if (openLoan) {
         throw {
           status: 409,
-          message: `Item '${item.title}' currently has an open loan (status: ${openLoan.status}) and cannot be loaned.`,
+          message: `Cannot loan item '${item.title}' because it currently has an open loan (status: ${openLoan.status}).`,
         };
       }
 
@@ -326,7 +354,7 @@ async function createLoanDirect(req, res) {
       const newLoan = await tx.loan.create({
         data: {
           itemId: parsedItemId,
-          borrowerId: parsedBorrowerId,
+          borrowerId: resolvedBorrowerId,
           status: initialStatus,
           requestedAt: new Date(),
           dueDate: parsedDueDate,

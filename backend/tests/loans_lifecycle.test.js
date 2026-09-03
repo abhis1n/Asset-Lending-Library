@@ -1137,5 +1137,141 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
     assert.strictEqual(issuedLoan.status, 'ISSUED');
     assert.ok(issuedLoan.dueDate);
   });
+
+  // --- SECTION 7: BORROWER INPUT RESOLUTION & 409 CONFLICT UX ---
+
+  test('37. Librarian can create loan using member email address (201 Created)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Email Borrower Test Item',
+        category: 'Test',
+        identifyingCode: `BORR-EMAIL-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: 'alice.member@example.com',
+        status: 'ISSUED',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+
+    assert.strictEqual(res.status, 201);
+    const data = await res.json();
+    assert.strictEqual(data.loan.borrower.email, 'alice.member@example.com');
+  });
+
+  test('38. Librarian cannot create loan using non-existent email (404 Not Found)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Nonexistent Email Test Item',
+        category: 'Test',
+        identifyingCode: `NONEXIST-EMAIL-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: 'nobody@example.com',
+        status: 'ISSUED',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+
+    assert.strictEqual(res.status, 404);
+    const data = await res.json();
+    assert.ok(data.error.includes('nobody@example.com'));
+  });
+
+  test('39. Librarian cannot create loan for librarian email (400 Bad Request)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Librarian Email Target Test Item',
+        category: 'Test',
+        identifyingCode: `LIB-TARGET-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: 'david.librarian@library.org',
+        status: 'ISSUED',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+
+    assert.strictEqual(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('role MEMBER'));
+  });
+
+  test('40. Create loan returns clear 409 Conflict reason when item has open loan', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Conflict Reason Test Item',
+        category: 'Test',
+        identifyingCode: `CONFLICT-REASON-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    // Create first open loan
+    const firstRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+    assert.strictEqual(firstRes.status, 201);
+
+    // Attempt second loan for same item
+    const conflictRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member2Id,
+        status: 'ISSUED',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+
+    assert.strictEqual(conflictRes.status, 409);
+    const conflictData = await conflictRes.json();
+    assert.ok(conflictData.error.includes('open loan'));
+    assert.ok(conflictData.error.includes('Conflict Reason Test Item'));
+  });
 });
 

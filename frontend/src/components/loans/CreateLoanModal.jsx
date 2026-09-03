@@ -71,8 +71,8 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
     }
 
     if (isLibrarian) {
-      if (!borrowerId || isNaN(parseInt(borrowerId, 10)) || parseInt(borrowerId, 10) < 1) {
-        nextErrors.borrowerId = 'A valid numeric Borrower ID is required.';
+      if (!borrowerId || !borrowerId.trim()) {
+        nextErrors.borrowerId = 'Borrower email or Member ID is required.';
       }
 
       if (initialStatus === 'ISSUED') {
@@ -126,10 +126,13 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
     setSubmitting(true);
     try {
       if (isLibrarian) {
-        // Direct loan creation by librarian
+        // Direct loan creation by librarian (accepts email or ID)
+        const borrowerValue = borrowerId.trim();
         const payload = {
           itemId: parseInt(selectedItemId, 10),
-          borrowerId: parseInt(borrowerId.trim(), 10),
+          borrowerId: !isNaN(parseInt(borrowerValue, 10)) && !borrowerValue.includes('@')
+            ? parseInt(borrowerValue, 10)
+            : borrowerValue,
           status: initialStatus,
           dueDate: initialStatus === 'ISSUED' && dueDate ? new Date(dueDate).toISOString() : undefined,
           note: note.trim() || undefined,
@@ -203,14 +206,13 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
                   <>
                     <div className="form-group">
                       <label className="form-label" htmlFor="loan-borrowerId">
-                        Borrower ID (Member) <span style={{ color: 'var(--danger-600)' }}>*</span>
+                        Borrower (Member Email or ID) <span style={{ color: 'var(--danger-600)' }}>*</span>
                       </label>
                       <input
                         id="loan-borrowerId"
-                        type="number"
-                        min="1"
+                        type="text"
                         className={`form-input ${errors.borrowerId ? 'is-invalid' : ''}`}
-                        placeholder="e.g. 2, 3 (Member User ID)"
+                        placeholder="e.g. alice.member@example.com or 2"
                         value={borrowerId}
                         onChange={(e) => setBorrowerId(e.target.value)}
                         disabled={submitting}

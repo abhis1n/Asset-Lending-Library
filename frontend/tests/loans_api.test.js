@@ -280,4 +280,64 @@ describe('Loan API Client Integration Tests', () => {
     assert.strictEqual(limits.minDateString, '2026-09-04');
     assert.strictEqual(limits.maxDateString, '2026-10-03');
   });
+
+  test('9. Librarian creates a direct loan using member email address', async () => {
+    setToken('librarian-test-jwt');
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+      assert.ok(url.endsWith('/loans'));
+      const body = JSON.parse(options.body);
+      assert.strictEqual(body.borrowerId, 'alice.member@example.com');
+      return {
+        ok: true,
+        status: 201,
+        headers: { get: () => 'application/json' },
+        json: async () => ({
+          message: 'Loan created successfully.',
+          loan: { id: 102, itemId: 3, borrowerId: 2, status: 'ISSUED', isOverdue: false },
+        }),
+      };
+    };
+
+    try {
+      const data = await api.post('/loans', {
+        itemId: 3,
+        borrowerId: 'alice.member@example.com',
+        status: 'ISSUED',
+      });
+      assert.strictEqual(data.loan.id, 102);
+      assert.strictEqual(data.loan.status, 'ISSUED');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('10. API client parses 409 conflict error message for open loans', async () => {
+    setToken('librarian-test-jwt');
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 409,
+      headers: { get: () => 'application/json' },
+      json: async () => ({
+        error: "Cannot loan item 'Sony Alpha' because it currently has an open loan (status: ISSUED).",
+      }),
+    });
+
+    try {
+      await assert.rejects(
+        async () => {
+          await api.post('/loans', { itemId: 10, borrowerId: 2, status: 'ISSUED' });
+        },
+        {
+          message: "Cannot loan item 'Sony Alpha' because it currently has an open loan (status: ISSUED).",
+          status: 409,
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
