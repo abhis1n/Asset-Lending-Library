@@ -22,7 +22,7 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
 
   const limits = getLoanDueDateLimits();
 
-  // Fetch active items for selection
+  // Fetch active items and reset form when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -33,7 +33,7 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
         // Filter only active items (backend already returns active by default)
         const activeItems = (data.items || []).filter((i) => !i.archived);
         setItems(activeItems);
-        if (activeItems.length > 0 && !selectedItemId) {
+        if (activeItems.length > 0) {
           setSelectedItemId(String(activeItems[0].id));
         }
       } catch (err) {
@@ -52,7 +52,12 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
     setErrors({});
     setApiError('');
     setNote('');
+    setBorrowerId('');
+  }, [isOpen]);
 
+  // Handle Escape key
+  useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && !submitting) {
         onClose();
@@ -150,7 +155,8 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
       }
       onClose();
     } catch (err) {
-      setApiError(err.message || 'Failed to submit loan request.');
+      const msg = err?.message || (typeof err === 'string' ? err : null);
+      setApiError(msg || 'An unexpected error occurred while processing the loan.');
     } finally {
       setSubmitting(false);
     }

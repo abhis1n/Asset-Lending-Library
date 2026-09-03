@@ -12,6 +12,7 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
 
   const limits = getLoanDueDateLimits();
 
+  // Reset form when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -22,7 +23,11 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
     setNote('');
     setApiError('');
     setErrors({});
+  }, [isOpen]);
 
+  // Handle Escape key
+  useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && !submitting) {
         onClose();

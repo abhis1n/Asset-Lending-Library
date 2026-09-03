@@ -223,7 +223,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
 
     assert.strictEqual(res.status, 400);
     const data = await res.json();
-    assert.ok(data.error.includes('role MEMBER'));
+    assert.ok(data.error.includes('librarian') || data.error.includes('role MEMBER'));
   });
 
   test('6. Non-existent borrower returns 404', async () => {
@@ -1195,7 +1195,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
 
     assert.strictEqual(res.status, 404);
     const data = await res.json();
-    assert.ok(data.error.includes('nobody@example.com'));
+    assert.ok(data.error.includes('No member found with that ID or email') || data.error.includes('nobody@example.com'));
   });
 
   test('39. Librarian cannot create loan for librarian email (400 Bad Request)', async () => {
@@ -1224,7 +1224,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
 
     assert.strictEqual(res.status, 400);
     const data = await res.json();
-    assert.ok(data.error.includes('role MEMBER'));
+    assert.ok(data.error.includes('librarian') || data.error.includes('role MEMBER'));
   });
 
   test('40. Create loan returns clear 409 Conflict reason when item has open loan', async () => {

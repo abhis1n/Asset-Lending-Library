@@ -273,7 +273,7 @@ async function createLoanDirect(req, res) {
       });
       if (!borrower) {
         return res.status(404).json({
-          error: `Borrower with email '${borrowerStr}' not found.`,
+          error: 'No member found with that ID or email.',
         });
       }
     } else {
@@ -290,14 +290,14 @@ async function createLoanDirect(req, res) {
       });
       if (!borrower) {
         return res.status(404).json({
-          error: `Borrower with ID ${parsedBorrowerId} not found.`,
+          error: 'No member found with that ID or email.',
         });
       }
     }
 
     if (borrower.role !== 'MEMBER') {
       return res.status(400).json({
-        error: 'Target borrower must have role MEMBER. Librarians cannot be assigned as loan borrowers.',
+        error: 'The selected user is a librarian. Please select a member.',
       });
     }
 
@@ -346,7 +346,7 @@ async function createLoanDirect(req, res) {
       if (openLoan) {
         throw {
           status: 409,
-          message: `Cannot loan item '${item.title}' because it currently has an open loan (status: ${openLoan.status}).`,
+          message: `This item is currently unavailable because it already has an open loan (status: ${openLoan.status}).`,
         };
       }
 
