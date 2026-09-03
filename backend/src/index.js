@@ -1,8 +1,8 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-// Single source of truth for environment variables (.env in workspace root)
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Single source of truth for environment variables (.env in backend directory)
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const express = require('express');
 const cors = require('cors');

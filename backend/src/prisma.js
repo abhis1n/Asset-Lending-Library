@@ -1,8 +1,8 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-// Load root .env as the single source of truth
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Load backend/.env as the single source of truth
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const { PrismaClient } = require('@prisma/client');
 

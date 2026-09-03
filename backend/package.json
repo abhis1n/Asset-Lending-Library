@@ -7,11 +7,11 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test --test-concurrency=1 tests/**/*.test.js",
-    "prisma:generate": "dotenv -e ../.env -- prisma generate",
-    "prisma:migrate": "dotenv -e ../.env -- prisma migrate dev",
-    "prisma:migrate:deploy": "dotenv -e ../.env -- prisma migrate deploy",
+    "prisma:generate": "dotenv -e .env -- prisma generate",
+    "prisma:migrate": "dotenv -e .env -- prisma migrate dev",
+    "prisma:migrate:deploy": "dotenv -e .env -- prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
-    "prisma:studio": "dotenv -e ../.env -- prisma studio"
+    "prisma:studio": "dotenv -e .env -- prisma studio"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
