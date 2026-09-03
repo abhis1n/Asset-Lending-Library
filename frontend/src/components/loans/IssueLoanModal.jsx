@@ -11,12 +11,13 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
   const [errors, setErrors] = useState({});
 
   const duration = loan?.borrowDurationDays || 14;
+  const { minDateString, maxDateString } = getLoanDueDateLimits(new Date());
 
-  // Reset form and derive due date when modal opens
+  // Reset form and pre-populate due date when modal opens
   useEffect(() => {
     if (!isOpen || !loan) return;
 
-    // Derived due date: today + borrowDurationDays
+    // Default derived due date: today + borrowDurationDays
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + (loan.borrowDurationDays || 14));
     setDueDate(targetDate.toISOString().slice(0, 10)); // YYYY-MM-DD
@@ -41,8 +42,9 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
 
   const validate = () => {
     const nextErrors = {};
-    if (!dueDate) {
-      nextErrors.dueDate = 'Due date is required.';
+    const validation = validateLoanDueDate(dueDate, new Date());
+    if (!validation.isValid) {
+      nextErrors.dueDate = validation.error;
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -101,21 +103,29 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
 
             <div className="form-group">
               <label className="form-label" htmlFor="issue-due-date">
-                Due Date (Derived)
+                Due Date <span style={{ color: 'var(--danger-500)' }}>*</span>
               </label>
               <input
                 id="issue-due-date"
                 type="date"
-                className="form-input"
+                className={`form-input ${errors.dueDate ? 'has-error' : ''}`}
                 value={dueDate}
-                disabled
-                readOnly
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  if (errors.dueDate) {
+                    setErrors((prev) => ({ ...prev, dueDate: undefined }));
+                  }
+                }}
+                min={minDateString}
+                max={maxDateString}
+                disabled={submitting}
+                required
               />
               {errors.dueDate && (
                 <div className="form-feedback-error">{errors.dueDate}</div>
               )}
               <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
-                Derived from the member’s requested duration ({duration} day{duration === 1 ? '' : 's'}) starting from the actual issue date.
+                Initially set to {duration} day{duration === 1 ? '' : 's'} from today based on requested duration. You may adjust this date within 1–31 days.
               </p>
             </div>
 

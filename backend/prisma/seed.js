@@ -283,9 +283,12 @@ async function main() {
   });
 
   // Loan 4: Requested Loan
+  const loan4RequestedAt = new Date(
+    now.getTime() - 2 * 24 * 60 * 60 * 1000
+  );
   // Due date is 14 days after the request date.
   const loan4DueDate = new Date(
-    now.getTime() + 14 * 24 * 60 * 60 * 1000
+    loan4RequestedAt.getTime() + 14 * 24 * 60 * 60 * 1000
   );
 
   const loan4 = await prisma.loan.create({
@@ -293,7 +296,7 @@ async function main() {
       itemId: createdItems[6].id,
       borrowerId: member1.id,
       borrowDurationDays: 14,
-      requestedAt: now,
+      requestedAt: loan4RequestedAt,
       dueDate: loan4DueDate,
       status: LoanStatus.REQUESTED,
     },

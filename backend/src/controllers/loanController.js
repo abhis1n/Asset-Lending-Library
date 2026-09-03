@@ -478,27 +478,23 @@ async function issueLoan(req, res) {
       const issueDate = new Date();
       let calculatedDueDate;
 
-      // 1. Calculate actual due date from actual issue timestamp + borrowDurationDays
-      if (loan.borrowDurationDays) {
-        calculatedDueDate = new Date(issueDate.getTime() + loan.borrowDurationDays * 24 * 60 * 60 * 1000);
-      } else if (dueDate) {
-        calculatedDueDate = new Date(dueDate);
+      // If a custom due date is supplied by the librarian, validate and use it
+      if (dueDate !== undefined && dueDate !== null && (typeof dueDate !== 'string' || dueDate.trim() !== '')) {
+        const customValidation = validateDueDate(dueDate, issueDate);
+        if (!customValidation.isValid) {
+          throw { status: 400, message: customValidation.error };
+        }
+        calculatedDueDate = customValidation.parsedDueDate;
+      } else if (loan.borrowDurationDays) {
+        // Otherwise calculate default from actual issue timestamp + borrowDurationDays
+        const derivedDate = new Date(issueDate.getTime() + loan.borrowDurationDays * 24 * 60 * 60 * 1000);
+        const derivedValidation = validateDueDate(derivedDate, issueDate);
+        if (!derivedValidation.isValid) {
+          throw { status: 400, message: derivedValidation.error };
+        }
+        calculatedDueDate = derivedValidation.parsedDueDate;
       } else {
         throw { status: 400, message: 'Due date is required.' };
-      }
-
-      // If client explicitly passed dueDate, validate it
-      if (dueDate) {
-        const clientValidation = validateDueDate(dueDate, issueDate);
-        if (!clientValidation.isValid) {
-          throw { status: 400, message: clientValidation.error };
-        }
-      }
-
-      // Validate calculatedDueDate against due date rules (1-31 days / 1 month)
-      const dateValidation = validateDueDate(calculatedDueDate, issueDate);
-      if (!dateValidation.isValid) {
-        throw { status: 400, message: dateValidation.error };
       }
 
       // Update Loan: preserve borrowDurationDays and set actual calculated dueDate
@@ -506,7 +502,7 @@ async function issueLoan(req, res) {
         where: { id: loanId },
         data: {
           status: LoanStatus.ISSUED,
-          dueDate: dateValidation.parsedDueDate,
+          dueDate: calculatedDueDate,
         },
         include: {
           item: true,
