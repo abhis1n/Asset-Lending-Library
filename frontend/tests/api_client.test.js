@@ -120,4 +120,36 @@ describe('Frontend API Client Foundation Tests', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test('5. API request on login endpoint parses 401 error message without calling unauthorized handler', async () => {
+    let handlerCalled = false;
+    setUnauthorizedHandler(() => {
+      handlerCalled = true;
+      removeToken();
+    });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 401,
+      headers: {
+        get: (name) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+      },
+      json: async () => ({ error: 'Invalid email or password.' }),
+    });
+
+    try {
+      await assert.rejects(
+        async () => {
+          await api.post('/auth/login', { email: 'alice@example.com', password: 'wrong' });
+        },
+        {
+          message: 'Invalid email or password.',
+        }
+      );
+      assert.strictEqual(handlerCalled, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
