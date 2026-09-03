@@ -140,6 +140,105 @@ async function requestLoan(req, res) {
 }
 
 /**
+ * Validate loan due date requirements:
+ * 1. Due date is required when issuing a loan.
+ * 2. Due date must be strictly after the issue date.
+ * 3. Due date cannot be the same date as the issue date.
+ * 4. Due date must be no more than 1 month after the issue date.
+ */
+function computeMaxDueDate(issueDate) {
+  const max = new Date(issueDate);
+  const currentDay = max.getDate();
+  max.setMonth(max.getMonth() + 1);
+  if (max.getDate() !== currentDay) {
+    max.setDate(0);
+  }
+  return max;
+}
+
+function computeMaxDueDateUtc(issueDate) {
+  const max = new Date(issueDate);
+  const currentDay = max.getUTCDate();
+  max.setUTCMonth(max.getUTCMonth() + 1);
+  if (max.getUTCDate() !== currentDay) {
+    max.setUTCDate(0);
+  }
+  return max;
+}
+
+function validateDueDate(dueDate, issueDate = new Date()) {
+  if (!dueDate || (typeof dueDate === 'string' && !dueDate.trim())) {
+    return {
+      isValid: false,
+      error: 'Due date is required when issuing a loan.',
+    };
+  }
+
+  const parsedDueDate = new Date(dueDate);
+  if (isNaN(parsedDueDate.getTime())) {
+    return {
+      isValid: false,
+      error: 'Invalid dueDate format. Must be a valid date.',
+    };
+  }
+
+  const parsedIssueDate = new Date(issueDate);
+
+  const toDateStringLocal = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const toDateStringUtc = (d) => {
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const dueStrLocal = toDateStringLocal(parsedDueDate);
+  const dueStrUtc = toDateStringUtc(parsedDueDate);
+  const issueStrLocal = toDateStringLocal(parsedIssueDate);
+  const issueStrUtc = toDateStringUtc(parsedIssueDate);
+
+  const maxDueDateLocal = computeMaxDueDate(parsedIssueDate);
+  const maxDueDateUtc = computeMaxDueDateUtc(parsedIssueDate);
+  const maxStrLocal = toDateStringLocal(maxDueDateLocal);
+  const maxStrUtc = toDateStringUtc(maxDueDateUtc);
+
+  // Check if due date is same date or in the past
+  const isSameOrPast =
+    parsedDueDate.getTime() <= parsedIssueDate.getTime() ||
+    dueStrLocal <= issueStrLocal ||
+    dueStrUtc <= issueStrUtc;
+
+  if (isSameOrPast) {
+    return {
+      isValid: false,
+      error: 'Due date must be strictly after the issue date and cannot be the same date.',
+    };
+  }
+
+  // Check if due date is more than 1 month after issue date
+  const isMoreThanOneMonth =
+    dueStrLocal > maxStrLocal && dueStrUtc > maxStrUtc;
+
+  if (isMoreThanOneMonth) {
+    return {
+      isValid: false,
+      error: 'Due date must be no more than 1 month after the issue date.',
+    };
+  }
+
+  return {
+    isValid: true,
+    parsedDueDate,
+  };
+}
+
+/**
  * POST /api/loans
  * Librarian creates a loan directly for a member.
  * Can create in REQUESTED or ISSUED state.
@@ -176,22 +275,18 @@ async function createLoanDirect(req, res) {
       });
     }
 
-    // Determine target initial status (defaults to ISSUED if dueDate provided, or REQUESTED)
+    // Determine target initial status (defaults to ISSUED if status !== 'REQUESTED')
     const initialStatus = status === LoanStatus.REQUESTED ? LoanStatus.REQUESTED : LoanStatus.ISSUED;
 
     let parsedDueDate = null;
     if (initialStatus === LoanStatus.ISSUED) {
-      if (!dueDate) {
+      const dateValidation = validateDueDate(dueDate);
+      if (!dateValidation.isValid) {
         return res.status(400).json({
-          error: 'dueDate is required when creating an issued loan.',
+          error: dateValidation.error,
         });
       }
-      parsedDueDate = new Date(dueDate);
-      if (isNaN(parsedDueDate.getTime())) {
-        return res.status(400).json({
-          error: 'Invalid dueDate format. Must be a valid date.',
-        });
-      }
+      parsedDueDate = dateValidation.parsedDueDate;
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -287,18 +382,13 @@ async function issueLoan(req, res) {
       return res.status(400).json({ error: 'Invalid loan ID.' });
     }
 
-    if (!dueDate) {
+    const dateValidation = validateDueDate(dueDate);
+    if (!dateValidation.isValid) {
       return res.status(400).json({
-        error: 'dueDate is required when issuing a loan.',
+        error: dateValidation.error,
       });
     }
-
-    const parsedDueDate = new Date(dueDate);
-    if (isNaN(parsedDueDate.getTime())) {
-      return res.status(400).json({
-        error: 'Invalid dueDate format. Must be a valid date.',
-      });
-    }
+    const parsedDueDate = dateValidation.parsedDueDate;
 
     const result = await prisma.$transaction(async (tx) => {
       // Fetch loan

@@ -230,4 +230,54 @@ describe('Loan API Client Integration Tests', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test('6. Due date validation rejects missing, past, and same-date values', async () => {
+    const { validateLoanDueDate } = await import('../src/utils/dateUtils.js');
+
+    const fixedIssueDate = new Date('2026-09-03T12:00:00.000Z');
+
+    // Missing
+    const resEmpty = validateLoanDueDate('', fixedIssueDate);
+    assert.strictEqual(resEmpty.isValid, false);
+    assert.ok(resEmpty.error.includes('required'));
+
+    // Past date
+    const resPast = validateLoanDueDate('2026-09-01', fixedIssueDate);
+    assert.strictEqual(resPast.isValid, false);
+    assert.ok(resPast.error.includes('strictly after'));
+
+    // Same date
+    const resSame = validateLoanDueDate('2026-09-03', fixedIssueDate);
+    assert.strictEqual(resSame.isValid, false);
+    assert.ok(resSame.error.includes('strictly after') || resSame.error.includes('same date'));
+  });
+
+  test('7. Due date validation accepts next day and 1 month boundary, rejects over 1 month', async () => {
+    const { validateLoanDueDate } = await import('../src/utils/dateUtils.js');
+
+    const fixedIssueDate = new Date('2026-09-03T12:00:00.000Z');
+
+    // Next day (strictly after)
+    const resNext = validateLoanDueDate('2026-09-04', fixedIssueDate);
+    assert.strictEqual(resNext.isValid, true);
+
+    // 1 month boundary (2026-10-03)
+    const resMonth = validateLoanDueDate('2026-10-03', fixedIssueDate);
+    assert.strictEqual(resMonth.isValid, true);
+
+    // Over 1 month (2026-10-04)
+    const resOver = validateLoanDueDate('2026-10-04', fixedIssueDate);
+    assert.strictEqual(resOver.isValid, false);
+    assert.ok(resOver.error.includes('1 month'));
+  });
+
+  test('8. getLoanDueDateLimits correctly calculates min and max date strings', async () => {
+    const { getLoanDueDateLimits } = await import('../src/utils/dateUtils.js');
+
+    const fixedIssueDate = new Date('2026-09-03T12:00:00.000Z');
+    const limits = getLoanDueDateLimits(fixedIssueDate);
+
+    assert.strictEqual(limits.minDateString, '2026-09-04');
+    assert.strictEqual(limits.maxDateString, '2026-10-03');
+  });
 });

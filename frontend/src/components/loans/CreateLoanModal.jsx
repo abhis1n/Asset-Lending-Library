@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { ErrorBanner, LoadingSpinner } from '../common/UIStates';
+import { getLoanDueDateLimits, validateLoanDueDate } from '../../utils/dateUtils';
 
 export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
   const { user, isLibrarian } = useAuth();
@@ -18,6 +19,8 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const limits = getLoanDueDateLimits();
 
   // Fetch active items for selection
   useEffect(() => {
@@ -71,10 +74,47 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
       if (!borrowerId || isNaN(parseInt(borrowerId, 10)) || parseInt(borrowerId, 10) < 1) {
         nextErrors.borrowerId = 'A valid numeric Borrower ID is required.';
       }
+
+      if (initialStatus === 'ISSUED') {
+        const validation = validateLoanDueDate(dueDate);
+        if (!validation.isValid) {
+          nextErrors.dueDate = validation.error;
+        }
+      }
     }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleDueDateChange = (val) => {
+    setDueDate(val);
+    if (isLibrarian && initialStatus === 'ISSUED') {
+      const validation = validateLoanDueDate(val);
+      if (!validation.isValid) {
+        setErrors((prev) => ({ ...prev, dueDate: validation.error }));
+      } else {
+        setErrors((prev) => {
+          const { dueDate: _, ...rest } = prev;
+          return rest;
+        });
+      }
+    }
+  };
+
+  const handleStatusChange = (val) => {
+    setInitialStatus(val);
+    if (val === 'ISSUED') {
+      const validation = validateLoanDueDate(dueDate);
+      if (!validation.isValid) {
+        setErrors((prev) => ({ ...prev, dueDate: validation.error }));
+      }
+    } else {
+      setErrors((prev) => {
+        const { dueDate: _, ...rest } = prev;
+        return rest;
+      });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -91,7 +131,7 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
           itemId: parseInt(selectedItemId, 10),
           borrowerId: parseInt(borrowerId.trim(), 10),
           status: initialStatus,
-          dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
+          dueDate: initialStatus === 'ISSUED' && dueDate ? new Date(dueDate).toISOString() : undefined,
           note: note.trim() || undefined,
         };
         const result = await api.post('/loans', payload);
@@ -189,7 +229,7 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
                           id="loan-status-select"
                           className="form-select"
                           value={initialStatus}
-                          onChange={(e) => setInitialStatus(e.target.value)}
+                          onChange={(e) => handleStatusChange(e.target.value)}
                           disabled={submitting}
                         >
                           <option value="ISSUED">ISSUED (Immediate Checkout)</option>
@@ -199,16 +239,22 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
 
                       <div className="form-group">
                         <label className="form-label" htmlFor="loan-due-date">
-                          Due Date (Optional)
+                          Due Date {initialStatus === 'ISSUED' && <span style={{ color: 'var(--danger-600)' }}>*</span>}
                         </label>
                         <input
                           id="loan-due-date"
                           type="date"
-                          className="form-input"
+                          className={`form-input ${errors.dueDate ? 'is-invalid' : ''}`}
                           value={dueDate}
-                          onChange={(e) => setDueDate(e.target.value)}
-                          disabled={submitting}
+                          min={limits.minDateString}
+                          max={limits.maxDateString}
+                          onChange={(e) => handleDueDateChange(e.target.value)}
+                          disabled={submitting || initialStatus !== 'ISSUED'}
+                          required={initialStatus === 'ISSUED'}
                         />
+                        {errors.dueDate && (
+                          <div className="form-feedback-error">{errors.dueDate}</div>
+                        )}
                       </div>
                     </div>
                   </>

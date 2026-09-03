@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { ErrorBanner } from '../common/UIStates';
+import { getLoanDueDateLimits, validateLoanDueDate } from '../../utils/dateUtils';
 
 export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
   const [dueDate, setDueDate] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [errors, setErrors] = useState({});
+
+  const limits = getLoanDueDateLimits();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -17,6 +21,7 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
     setDueDate(defaultDate.toISOString().slice(0, 10)); // YYYY-MM-DD
     setNote('');
     setApiError('');
+    setErrors({});
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && !submitting) {
@@ -29,9 +34,35 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
 
   if (!isOpen || !loan) return null;
 
+  const validate = () => {
+    const nextErrors = {};
+    const validation = validateLoanDueDate(dueDate);
+    if (!validation.isValid) {
+      nextErrors.dueDate = validation.error;
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleDueDateChange = (val) => {
+    setDueDate(val);
+    const validation = validateLoanDueDate(val);
+    if (!validation.isValid) {
+      setErrors((prev) => ({ ...prev, dueDate: validation.error }));
+    } else {
+      setErrors((prev) => {
+        const { dueDate: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setApiError('');
+
+    if (!validate()) return;
+
     setSubmitting(true);
 
     try {
@@ -60,7 +91,7 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <div className="modal-body">
             <ErrorBanner message={apiError} onDismiss={() => setApiError('')} />
 
@@ -76,18 +107,24 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
 
             <div className="form-group">
               <label className="form-label" htmlFor="issue-due-date">
-                Due Date
+                Due Date <span style={{ color: 'var(--danger-600)' }}>*</span>
               </label>
               <input
                 id="issue-due-date"
                 type="date"
-                className="form-input"
+                className={`form-input ${errors.dueDate ? 'is-invalid' : ''}`}
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                min={limits.minDateString}
+                max={limits.maxDateString}
+                onChange={(e) => handleDueDateChange(e.target.value)}
                 disabled={submitting}
+                required
               />
+              {errors.dueDate && (
+                <div className="form-feedback-error">{errors.dueDate}</div>
+              )}
               <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
-                Optional. If specified, the system will track overdue compliance based on this date.
+                Required. Must be strictly after the issue date and no more than 1 month ahead.
               </p>
             </div>
 

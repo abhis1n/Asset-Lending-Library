@@ -217,7 +217,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       body: JSON.stringify({
         itemId: activeItemId3,
         borrowerId: librarian2Id,
-        dueDate: new Date().toISOString(),
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }),
     });
 
@@ -236,7 +236,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       body: JSON.stringify({
         itemId: activeItemId3,
         borrowerId: 999999,
-        dueDate: new Date().toISOString(),
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }),
     });
 
@@ -633,24 +633,18 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
     });
 
-    // Create loan that is already overdue (due 3 days ago)
-    const overdueDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    const createRes = await fetch(`${baseUrl}/api/loans`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${librarianToken}`,
-      },
-      body: JSON.stringify({
+    // Create loan in DB that is already overdue (due 3 days ago)
+    const overdueDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const loan = await prisma.loan.create({
+      data: {
         itemId: overdueItem.id,
         borrowerId: member1Id,
         dueDate: overdueDate,
         status: 'ISSUED',
-      }),
+        requestedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      },
     });
-    assert.strictEqual(createRes.status, 201);
-    const loan = (await createRes.json()).loan;
-    assert.strictEqual(loan.isOverdue, true);
+    assert.strictEqual(loan.status, 'ISSUED');
 
     // Another member attempts to request this overdue item
     const reqRes = await fetch(`${baseUrl}/api/loans/request`, {
@@ -905,6 +899,243 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
 
     const loansInDb = await prisma.loan.findMany({ where: { itemId: itemB.id } });
     assert.strictEqual(loansInDb.length, 0, 'No loan created on invalid input');
+  });
+
+  // --- SECTION 6: DUE DATE BOUNDARY VALIDATION ---
+
+  test('31. Due date cannot be in the past (400 Bad Request)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Past Due Date Test Item',
+        category: 'Test',
+        identifyingCode: `DUE-PAST-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        dueDate: pastDate,
+      }),
+    });
+
+    assert.strictEqual(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('strictly after'));
+  });
+
+  test('32. Due date cannot be the same date as the issue date (400 Bad Request)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Same Date Due Date Test Item',
+        category: 'Test',
+        identifyingCode: `DUE-SAME-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const todayDate = new Date().toISOString();
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        dueDate: todayDate,
+      }),
+    });
+
+    assert.strictEqual(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('cannot be the same date') || data.error.includes('strictly after'));
+  });
+
+  test('33. Due date strictly after issue date (tomorrow) succeeds (201 Created)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Tomorrow Due Date Test Item',
+        category: 'Test',
+        identifyingCode: `DUE-TOMORROW-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        dueDate: tomorrow.toISOString(),
+      }),
+    });
+
+    assert.strictEqual(res.status, 201);
+    const data = await res.json();
+    assert.strictEqual(data.loan.status, 'ISSUED');
+  });
+
+  test('34. Due date at exactly 1 month boundary succeeds (201 Created)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'One Month Due Date Test Item',
+        category: 'Test',
+        identifyingCode: `DUE-ONEMONTH-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const oneMonth = new Date();
+    const currentDay = oneMonth.getDate();
+    oneMonth.setMonth(oneMonth.getMonth() + 1);
+    if (oneMonth.getDate() !== currentDay) {
+      oneMonth.setDate(0);
+    }
+
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        dueDate: oneMonth.toISOString(),
+      }),
+    });
+
+    assert.strictEqual(res.status, 201);
+    const data = await res.json();
+    assert.strictEqual(data.loan.status, 'ISSUED');
+  });
+
+  test('35. Due date strictly more than 1 month after issue date is rejected (400 Bad Request)', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'More Than One Month Test Item',
+        category: 'Test',
+        identifyingCode: `DUE-OVERMONTH-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    const overMonth = new Date();
+    const currentDay = overMonth.getDate();
+    overMonth.setMonth(overMonth.getMonth() + 1);
+    if (overMonth.getDate() !== currentDay) {
+      overMonth.setDate(0);
+    }
+    overMonth.setDate(overMonth.getDate() + 2); // 2 days past 1 month
+
+    const res = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({
+        itemId: item.id,
+        borrowerId: member1Id,
+        status: 'ISSUED',
+        dueDate: overMonth.toISOString(),
+      }),
+    });
+
+    assert.strictEqual(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('1 month'));
+  });
+
+  test('36. POST /api/loans/:id/issue enforces due date rules on requested loans', async () => {
+    const item = await prisma.item.create({
+      data: {
+        title: 'Issue Transition Due Date Test Item',
+        category: 'Test',
+        identifyingCode: `ISSUE-DUE-${Date.now()}`,
+        archived: false,
+      },
+    });
+
+    // Create requested loan
+    const reqRes = await fetch(`${baseUrl}/api/loans/request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${member1Token}`,
+      },
+      body: JSON.stringify({ itemId: item.id }),
+    });
+    assert.strictEqual(reqRes.status, 201);
+    const loan = (await reqRes.json()).loan;
+
+    // 36a. Missing dueDate -> 400
+    const resNoDue = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({}),
+    });
+    assert.strictEqual(resNoDue.status, 400);
+
+    // 36b. Same day dueDate -> 400
+    const resSameDay = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({ dueDate: new Date().toISOString() }),
+    });
+    assert.strictEqual(resSameDay.status, 400);
+
+    // 36c. > 1 month dueDate -> 400
+    const resOver = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({ dueDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString() }),
+    });
+    assert.strictEqual(resOver.status, 400);
+
+    // 36d. Valid dueDate (14 days) -> 200 OK
+    const resValid = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${librarianToken}`,
+      },
+      body: JSON.stringify({ dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() }),
+    });
+    assert.strictEqual(resValid.status, 200);
+    const issuedLoan = (await resValid.json()).loan;
+    assert.strictEqual(issuedLoan.status, 'ISSUED');
+    assert.ok(issuedLoan.dueDate);
   });
 });
 
