@@ -53,6 +53,14 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const register = async (email, password) => {
+    const data = await api.post('/auth/register', { email, password });
+    setToken(data.token);
+    setTokenState(data.token);
+    setUser(data.user);
+    return data.user;
+  };
+
   const isLibrarian = user?.role === 'LIBRARIAN';
   const isMember = user?.role === 'MEMBER';
   const isAuthenticated = Boolean(user && token);
@@ -65,6 +73,7 @@ export function AuthProvider({ children }) {
     isLibrarian,
     isMember,
     login,
+    register,
     logout,
     refreshUser,
   };

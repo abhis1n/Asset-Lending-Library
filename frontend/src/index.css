@@ -348,6 +348,34 @@ body {
   margin-top: 0.35rem;
 }
 
+.auth-tabs {
+  display: flex;
+  background-color: var(--bg-app);
+  border-radius: var(--radius-md);
+  padding: 0.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border-light);
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.auth-tab-btn.active {
+  background-color: #ffffff;
+  color: var(--primary-700);
+  box-shadow: var(--shadow-sm);
+}
+
 .demo-pills {
   margin-top: 1.75rem;
   padding-top: 1.25rem;

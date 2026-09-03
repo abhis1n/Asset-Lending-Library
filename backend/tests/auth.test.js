@@ -183,4 +183,95 @@ describe('Authentication & Role-Based Authorization Integration Tests', () => {
       'Authentication required. No Bearer token provided.'
     );
   });
+
+  // --- MEMBER SIGN-UP TESTS ---
+
+  test('11. Successful member sign up creates new user with MEMBER role (201 Created)', async () => {
+    const uniqueEmail = `newmember-${Date.now()}@example.com`;
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: uniqueEmail,
+        password: 'Password123!',
+      }),
+    });
+
+    assert.strictEqual(response.status, 201);
+    const data = await response.json();
+    assert.ok(data.token, 'Token should be returned');
+    assert.strictEqual(data.user.email, uniqueEmail);
+    assert.strictEqual(data.user.role, 'MEMBER');
+    assert.strictEqual(typeof data.user.id, 'number');
+
+    // Verify token works on protected endpoint
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${data.token}` },
+    });
+    assert.strictEqual(meRes.status, 200);
+    const meData = await meRes.json();
+    assert.strictEqual(meData.user.email, uniqueEmail);
+    assert.strictEqual(meData.user.role, 'MEMBER');
+  });
+
+  test('12. Member sign up ignores client-provided role and always sets MEMBER', async () => {
+    const uniqueEmail = `hacker-${Date.now()}@example.com`;
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: uniqueEmail,
+        password: 'Password123!',
+        role: 'LIBRARIAN', // attempt privilege escalation
+      }),
+    });
+
+    assert.strictEqual(response.status, 201);
+    const data = await response.json();
+    assert.strictEqual(data.user.role, 'MEMBER', 'Role must strictly be MEMBER');
+  });
+
+  test('13. Member sign up with existing email returns 409 Conflict with clear error', async () => {
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'alice.member@example.com',
+        password: 'Password123!',
+      }),
+    });
+
+    assert.strictEqual(response.status, 409);
+    const data = await response.json();
+    assert.ok(
+      data.error.includes('already exists'),
+      `Expected user already exists error, got: ${data.error}`
+    );
+  });
+
+  test('14. Member sign up with invalid or missing fields returns 400 Bad Request', async () => {
+    // Missing email
+    const resNoEmail = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'Password123!' }),
+    });
+    assert.strictEqual(resNoEmail.status, 400);
+
+    // Invalid email format
+    const resBadEmail = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'notanemail', password: 'Password123!' }),
+    });
+    assert.strictEqual(resBadEmail.status, 400);
+
+    // Password too short (< 6 chars)
+    const resShortPass = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'valid@example.com', password: '123' }),
+    });
+    assert.strictEqual(resShortPass.status, 400);
+  });
 });

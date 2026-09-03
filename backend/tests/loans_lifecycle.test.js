@@ -984,7 +984,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: item.id,
-        borrowerId: member1Id,
+        borrowerId: member2Id,
         status: 'ISSUED',
         dueDate: tomorrow.toISOString(),
       }),
@@ -1020,7 +1020,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: item.id,
-        borrowerId: member1Id,
+        borrowerId: member2Id,
         status: 'ISSUED',
         dueDate: oneMonth.toISOString(),
       }),

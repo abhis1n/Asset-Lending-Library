@@ -39,14 +39,19 @@ async function request(endpoint, options = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint}`;
   const token = getToken();
 
-  const isLoginEndpoint =
-    endpoint === '/auth/login' || endpoint.endsWith('/auth/login') || url.endsWith('/auth/login');
+  const isAuthEndpoint =
+    endpoint === '/auth/login' ||
+    endpoint.endsWith('/auth/login') ||
+    url.endsWith('/auth/login') ||
+    endpoint === '/auth/register' ||
+    endpoint.endsWith('/auth/register') ||
+    url.endsWith('/auth/register');
 
   const headers = {
     ...options.headers,
   };
 
-  if (token && !isLoginEndpoint) {
+  if (token && !isAuthEndpoint) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
@@ -67,8 +72,8 @@ async function request(endpoint, options = {}) {
       headers,
     });
 
-    // Handle 401 Unauthorized globally (exclude login endpoint)
-    if (response.status === 401 && !isLoginEndpoint) {
+    // Handle 401 Unauthorized globally (exclude public auth endpoints)
+    if (response.status === 401 && !isAuthEndpoint) {
       if (onUnauthorizedCallback) {
         onUnauthorizedCallback();
       }

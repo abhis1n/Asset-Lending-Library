@@ -152,4 +152,67 @@ describe('Frontend API Client Foundation Tests', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test('6. API request on register endpoint succeeds and receives 201 with token', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+      assert.ok(url.endsWith('/auth/register'));
+      assert.strictEqual(options.method, 'POST');
+      const body = JSON.parse(options.body);
+      assert.strictEqual(body.email, 'newuser@example.com');
+      assert.strictEqual(body.password, 'Password123!');
+      return {
+        ok: true,
+        status: 201,
+        headers: {
+          get: (name) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+        },
+        json: async () => ({
+          message: 'Sign up successful.',
+          token: 'mock-member-jwt',
+          user: { id: 10, email: 'newuser@example.com', role: 'MEMBER' },
+        }),
+      };
+    };
+
+    try {
+      const res = await api.post('/auth/register', {
+        email: 'newuser@example.com',
+        password: 'Password123!',
+      });
+      assert.strictEqual(res.token, 'mock-member-jwt');
+      assert.strictEqual(res.user.role, 'MEMBER');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test('7. API request on register parses 409 conflict error when user already exists', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 409,
+      headers: {
+        get: (name) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+      },
+      json: async () => ({ error: 'A user with this email already exists.' }),
+    });
+
+    try {
+      await assert.rejects(
+        async () => {
+          await api.post('/auth/register', {
+            email: 'alice.member@example.com',
+            password: 'Password123!',
+          });
+        },
+        {
+          message: 'A user with this email already exists.',
+          status: 409,
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
