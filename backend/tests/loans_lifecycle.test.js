@@ -137,6 +137,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: activeItemId1,
+        borrowDurationDays: 14,
         note: 'Member request for testing',
       }),
     });
@@ -146,7 +147,8 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
     assert.strictEqual(data.loan.status, 'REQUESTED');
     assert.strictEqual(data.loan.borrowerId, member1Id);
     assert.strictEqual(data.loan.itemId, activeItemId1);
-    assert.strictEqual(data.loan.dueDate, null);
+    assert.strictEqual(data.loan.borrowDurationDays, 14);
+    assert.ok(data.loan.dueDate);
     createdLoanId = data.loan.id;
   });
 
@@ -159,6 +161,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: archivedItemId,
+        borrowDurationDays: 14,
       }),
     });
 
@@ -255,6 +258,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: activeItemId1,
+        borrowDurationDays: 14,
       }),
     });
 
@@ -273,6 +277,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: activeItemId2,
+        borrowDurationDays: 14,
       }),
     });
 
@@ -292,6 +297,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
           },
           body: JSON.stringify({
             itemId: activeItemId3,
+            borrowDurationDays: 14,
             note: `Concurrent request attempt ${i + 1}`,
           }),
         })
@@ -400,6 +406,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: activeItemId1,
+        borrowDurationDays: 14,
         note: 'New request after previous loan was returned',
       }),
     });
@@ -448,6 +455,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
       },
       body: JSON.stringify({
         itemId: activeItemId1,
+        borrowDurationDays: 14,
         note: 'New request on item previously marked lost',
       }),
     });
@@ -653,7 +661,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${member2Token}`,
       },
-      body: JSON.stringify({ itemId: overdueItem.id }),
+      body: JSON.stringify({ itemId: overdueItem.id, borrowDurationDays: 14 }),
     });
 
     assert.strictEqual(reqRes.status, 409);
@@ -794,7 +802,7 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${member1Token}`,
       },
-      body: JSON.stringify({ itemId: testItem.id }),
+      body: JSON.stringify({ itemId: testItem.id, borrowDurationDays: 14 }),
     });
     const loan = (await reqRes.json()).loan;
 
@@ -1085,13 +1093,31 @@ describe('Loan Lifecycle, Invariants, and History Integration Tests', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${member1Token}`,
       },
-      body: JSON.stringify({ itemId: item.id }),
+      body: JSON.stringify({ itemId: item.id, borrowDurationDays: 14 }),
     });
     assert.strictEqual(reqRes.status, 201);
     const loan = (await reqRes.json()).loan;
 
-    // 36a. Missing dueDate -> 400
-    const resNoDue = await fetch(`${baseUrl}/api/loans/${loan.id}/issue`, {
+    // Create a loan without duration to test missing dueDate validation
+    const itemForLegacy = await prisma.item.create({
+      data: {
+        title: 'Legacy Due Date Test Item',
+        category: 'Test Category',
+        identifyingCode: `LEG-DUE-${Date.now()}`,
+        archived: false,
+      },
+    });
+    const legacyLoan = await prisma.loan.create({
+      data: {
+        itemId: itemForLegacy.id,
+        borrowerId: member1Id,
+        status: 'REQUESTED',
+        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    // 36a. Missing dueDate when duration is not stored -> 400
+    const resNoDue = await fetch(`${baseUrl}/api/loans/${legacyLoan.id}/issue`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

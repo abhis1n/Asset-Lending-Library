@@ -18,6 +18,7 @@ function formatLoan(loan) {
     id: loan.id,
     itemId: loan.itemId,
     borrowerId: loan.borrowerId,
+    borrowDurationDays: loan.borrowDurationDays,
     requestedAt: loan.requestedAt,
     dueDate: loan.dueDate,
     status: loan.status,
@@ -50,13 +51,33 @@ function formatLoan(loan) {
  */
 async function requestLoan(req, res) {
   try {
-    const { itemId, note } = req.body;
+    const { itemId, note, borrowDurationDays } = req.body;
     const borrowerId = req.user.id;
 
     const parsedItemId = parseInt(itemId, 10);
     if (isNaN(parsedItemId)) {
       return res.status(400).json({
         error: 'Invalid itemId. Must be a valid integer.',
+      });
+    }
+
+    // Validate borrowDurationDays (must be integer between 1 and 31 days)
+    if (borrowDurationDays === undefined || borrowDurationDays === null || borrowDurationDays === '') {
+      return res.status(400).json({
+        error: 'borrowDurationDays is required.',
+      });
+    }
+
+    const parsedDuration = Number(borrowDurationDays);
+    if (!Number.isInteger(parsedDuration)) {
+      return res.status(400).json({
+        error: 'borrowDurationDays must be an integer.',
+      });
+    }
+
+    if (parsedDuration < 1 || parsedDuration > 31) {
+      return res.status(400).json({
+        error: 'borrowDurationDays must be between 1 and 31 days.',
       });
     }
 
@@ -94,14 +115,20 @@ async function requestLoan(req, res) {
         };
       }
 
-      // 3. Create Loan
+      // 3. Create Loan with provisional due date = requestedAt + borrowDurationDays
+      const requestedAt = new Date();
+      const provisionalDueDate = new Date(
+        requestedAt.getTime() + parsedDuration * 24 * 60 * 60 * 1000
+      );
+
       const newLoan = await tx.loan.create({
         data: {
           itemId: parsedItemId,
           borrowerId,
+          borrowDurationDays: parsedDuration,
           status: LoanStatus.REQUESTED,
-          requestedAt: new Date(),
-          dueDate: null,
+          requestedAt,
+          dueDate: provisionalDueDate,
         },
         include: {
           item: true,
@@ -246,7 +273,7 @@ function validateDueDate(dueDate, issueDate = new Date()) {
  */
 async function createLoanDirect(req, res) {
   try {
-    const { itemId, borrowerId, borrowerEmail, borrower: borrowerField, dueDate, status, note } = req.body;
+    const { itemId, borrowerId, borrowerEmail, borrower: borrowerField, status, dueDate, note, borrowDurationDays } = req.body;
     const librarianId = req.user.id;
 
     const parsedItemId = parseInt(itemId, 10);
@@ -317,6 +344,24 @@ async function createLoanDirect(req, res) {
       parsedDueDate = dateValidation.parsedDueDate;
     }
 
+    let duration = 14;
+    if (borrowDurationDays !== undefined && borrowDurationDays !== null && borrowDurationDays !== '') {
+      const parsed = Number(borrowDurationDays);
+      if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 31) {
+        duration = parsed;
+      }
+    } else if (parsedDueDate) {
+      const diffMs = parsedDueDate.getTime() - Date.now();
+      const calcDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+      if (calcDays >= 1 && calcDays <= 31) {
+        duration = calcDays;
+      }
+    }
+
+    if (initialStatus === LoanStatus.REQUESTED && !parsedDueDate) {
+      parsedDueDate = new Date(Date.now() + duration * 24 * 60 * 60 * 1000);
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // 1. Lock item row
       const itemRows = await tx.$queryRaw`
@@ -355,6 +400,7 @@ async function createLoanDirect(req, res) {
         data: {
           itemId: parsedItemId,
           borrowerId: resolvedBorrowerId,
+          borrowDurationDays: duration,
           status: initialStatus,
           requestedAt: new Date(),
           dueDate: parsedDueDate,
@@ -410,14 +456,6 @@ async function issueLoan(req, res) {
       return res.status(400).json({ error: 'Invalid loan ID.' });
     }
 
-    const dateValidation = validateDueDate(dueDate);
-    if (!dateValidation.isValid) {
-      return res.status(400).json({
-        error: dateValidation.error,
-      });
-    }
-    const parsedDueDate = dateValidation.parsedDueDate;
-
     const result = await prisma.$transaction(async (tx) => {
       // Fetch loan
       const loan = await tx.loan.findUnique({
@@ -437,12 +475,38 @@ async function issueLoan(req, res) {
         };
       }
 
-      // Update Loan
+      const issueDate = new Date();
+      let calculatedDueDate;
+
+      // 1. Calculate actual due date from actual issue timestamp + borrowDurationDays
+      if (loan.borrowDurationDays) {
+        calculatedDueDate = new Date(issueDate.getTime() + loan.borrowDurationDays * 24 * 60 * 60 * 1000);
+      } else if (dueDate) {
+        calculatedDueDate = new Date(dueDate);
+      } else {
+        throw { status: 400, message: 'Due date is required.' };
+      }
+
+      // If client explicitly passed dueDate, validate it
+      if (dueDate) {
+        const clientValidation = validateDueDate(dueDate, issueDate);
+        if (!clientValidation.isValid) {
+          throw { status: 400, message: clientValidation.error };
+        }
+      }
+
+      // Validate calculatedDueDate against due date rules (1-31 days / 1 month)
+      const dateValidation = validateDueDate(calculatedDueDate, issueDate);
+      if (!dateValidation.isValid) {
+        throw { status: 400, message: dateValidation.error };
+      }
+
+      // Update Loan: preserve borrowDurationDays and set actual calculated dueDate
       const updatedLoan = await tx.loan.update({
         where: { id: loanId },
         data: {
           status: LoanStatus.ISSUED,
-          dueDate: parsedDueDate,
+          dueDate: dateValidation.parsedDueDate,
         },
         include: {
           item: true,

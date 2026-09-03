@@ -10,20 +10,20 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
   const [apiError, setApiError] = useState('');
   const [errors, setErrors] = useState({});
 
-  const limits = getLoanDueDateLimits();
+  const duration = loan?.borrowDurationDays || 14;
 
-  // Reset form when modal opens
+  // Reset form and derive due date when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !loan) return;
 
-    // Set default due date to 14 days in future
-    const defaultDate = new Date();
-    defaultDate.setDate(defaultDate.getDate() + 14);
-    setDueDate(defaultDate.toISOString().slice(0, 10)); // YYYY-MM-DD
+    // Derived due date: today + borrowDurationDays
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + (loan.borrowDurationDays || 14));
+    setDueDate(targetDate.toISOString().slice(0, 10)); // YYYY-MM-DD
     setNote('');
     setApiError('');
     setErrors({});
-  }, [isOpen]);
+  }, [isOpen, loan]);
 
   // Handle Escape key
   useEffect(() => {
@@ -41,25 +41,11 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
 
   const validate = () => {
     const nextErrors = {};
-    const validation = validateLoanDueDate(dueDate);
-    if (!validation.isValid) {
-      nextErrors.dueDate = validation.error;
+    if (!dueDate) {
+      nextErrors.dueDate = 'Due date is required.';
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
-  };
-
-  const handleDueDateChange = (val) => {
-    setDueDate(val);
-    const validation = validateLoanDueDate(val);
-    if (!validation.isValid) {
-      setErrors((prev) => ({ ...prev, dueDate: validation.error }));
-    } else {
-      setErrors((prev) => {
-        const { dueDate: _, ...rest } = prev;
-        return rest;
-      });
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -108,28 +94,28 @@ export function IssueLoanModal({ isOpen, onClose, loan, onSuccess }) {
               <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                 Borrower: <strong>{loan.borrower?.email || `User #${loan.borrowerId}`}</strong>
               </div>
+              <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Requested Borrowing Duration: <strong>{duration} day{duration === 1 ? '' : 's'}</strong>
+              </div>
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="issue-due-date">
-                Due Date <span style={{ color: 'var(--danger-600)' }}>*</span>
+                Due Date (Derived)
               </label>
               <input
                 id="issue-due-date"
                 type="date"
-                className={`form-input ${errors.dueDate ? 'is-invalid' : ''}`}
+                className="form-input"
                 value={dueDate}
-                min={limits.minDateString}
-                max={limits.maxDateString}
-                onChange={(e) => handleDueDateChange(e.target.value)}
-                disabled={submitting}
-                required
+                disabled
+                readOnly
               />
               {errors.dueDate && (
                 <div className="form-feedback-error">{errors.dueDate}</div>
               )}
               <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
-                Required. Must be strictly after the issue date and no more than 1 month ahead.
+                Derived from the member’s requested duration ({duration} day{duration === 1 ? '' : 's'}) starting from the actual issue date.
               </p>
             </div>
 

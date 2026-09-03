@@ -112,6 +112,13 @@ export function LoanDetailModal({
               </div>
 
               <div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Borrowing Duration</div>
+                <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>
+                  {loan.borrowDurationDays ? `${loan.borrowDurationDays} day${loan.borrowDurationDays === 1 ? '' : 's'}` : 'N/A'}
+                </div>
+              </div>
+
+              <div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Due Date</div>
                 <div style={{ fontWeight: '600', color: loan.isOverdue ? 'var(--danger-600)' : 'var(--text-main)' }}>
                   {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString() : 'No due date set'}

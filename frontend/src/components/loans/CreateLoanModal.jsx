@@ -14,8 +14,8 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
   const [borrowerId, setBorrowerId] = useState('');
   const [initialStatus, setInitialStatus] = useState('ISSUED');
   const [dueDate, setDueDate] = useState('');
+  const [borrowDurationDays, setBorrowDurationDays] = useState('14');
   const [note, setNote] = useState('');
-
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +49,7 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 14);
     setDueDate(defaultDate.toISOString().slice(0, 10)); // YYYY-MM-DD
+    setBorrowDurationDays('14');
     setErrors({});
     setApiError('');
     setNote('');
@@ -85,6 +86,15 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
         if (!validation.isValid) {
           nextErrors.dueDate = validation.error;
         }
+      }
+    } else {
+      const parsedDuration = Number(borrowDurationDays);
+      if (borrowDurationDays === '' || isNaN(parsedDuration)) {
+        nextErrors.borrowDurationDays = 'Borrowing period is required.';
+      } else if (!Number.isInteger(parsedDuration)) {
+        nextErrors.borrowDurationDays = 'Borrowing period must be a whole number of days.';
+      } else if (parsedDuration < 1 || parsedDuration > 31) {
+        nextErrors.borrowDurationDays = 'Borrowing period must be between 1 and 31 days.';
       }
     }
 
@@ -148,6 +158,7 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
         // Member requesting loan
         const payload = {
           itemId: parseInt(selectedItemId, 10),
+          borrowDurationDays: parseInt(borrowDurationDays, 10),
           note: note.trim() || undefined,
         };
         const result = await api.post('/loans/request', payload);
@@ -266,6 +277,50 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* Borrowing Period (Days) for Member Request */}
+                {!isLibrarian && (
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="loan-duration">
+                      Borrowing period (days) <span style={{ color: 'var(--danger-600)' }}>*</span>
+                    </label>
+                    <input
+                      id="loan-duration"
+                      type="number"
+                      min="1"
+                      max="31"
+                      step="1"
+                      className={`form-input ${errors.borrowDurationDays ? 'is-invalid' : ''}`}
+                      placeholder="e.g. 7, 14, 21"
+                      value={borrowDurationDays}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setBorrowDurationDays(val);
+                        const parsed = Number(val);
+                        if (val === '' || isNaN(parsed)) {
+                          setErrors((prev) => ({ ...prev, borrowDurationDays: 'Borrowing period is required.' }));
+                        } else if (!Number.isInteger(parsed)) {
+                          setErrors((prev) => ({ ...prev, borrowDurationDays: 'Borrowing period must be a whole number of days.' }));
+                        } else if (parsed < 1 || parsed > 31) {
+                          setErrors((prev) => ({ ...prev, borrowDurationDays: 'Borrowing period must be between 1 and 31 days.' }));
+                        } else {
+                          setErrors((prev) => {
+                            const { borrowDurationDays: _, ...rest } = prev;
+                            return rest;
+                          });
+                        }
+                      }}
+                      disabled={submitting}
+                      required
+                    />
+                    {errors.borrowDurationDays && (
+                      <div className="form-feedback-error">{errors.borrowDurationDays}</div>
+                    )}
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+                      Choose between 1 and 31 days. Final due date will be calculated from the day equipment is issued.
+                    </p>
+                  </div>
                 )}
 
                 {/* Optional Note */}

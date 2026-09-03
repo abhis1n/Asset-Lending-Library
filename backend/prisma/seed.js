@@ -177,6 +177,7 @@ async function main() {
     data: {
       itemId: createdItems[0].id,
       borrowerId: member1.id,
+      borrowDurationDays: 14,
       requestedAt: twoWeeksAgo,
       dueDate: loan1DueDate,
       status: LoanStatus.ISSUED,
@@ -212,6 +213,7 @@ async function main() {
     data: {
       itemId: createdItems[2].id,
       borrowerId: member2.id,
+      borrowDurationDays: 5,
       requestedAt: twoWeeksAgo,
       dueDate: loan2DueDate,
       status: LoanStatus.ISSUED,
@@ -247,6 +249,7 @@ async function main() {
     data: {
       itemId: createdItems[4].id,
       borrowerId: member3.id,
+      borrowDurationDays: 7,
       requestedAt: twoWeeksAgo,
       dueDate: loan3DueDate,
       status: LoanStatus.RETURNED,
@@ -289,6 +292,7 @@ async function main() {
     data: {
       itemId: createdItems[6].id,
       borrowerId: member1.id,
+      borrowDurationDays: 14,
       requestedAt: now,
       dueDate: loan4DueDate,
       status: LoanStatus.REQUESTED,
