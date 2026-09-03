@@ -216,6 +216,9 @@ async function getMyCustodialItems(req, res) {
                 },
               },
             },
+            loans: {
+              select: { id: true, status: true },
+            },
           },
         },
       },

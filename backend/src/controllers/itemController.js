@@ -4,7 +4,7 @@ const { parse } = require('csv-parse/sync');
 /**
  * Helper to format item response and flatten custodians list
  */
-function formatItem(item) {
+function formatItem(item, { includeAvailability = true } = {}) {
   if (!item) return null;
   const custodians = item.custodians
     ? item.custodians.map((c) => ({
@@ -14,7 +14,7 @@ function formatItem(item) {
     }))
     : [];
 
-  return {
+  const formatted = {
     id: item.id,
     title: item.title,
     category: item.category,
@@ -24,6 +24,20 @@ function formatItem(item) {
     updatedAt: item.updatedAt,
     custodians,
   };
+
+  if (includeAvailability) {
+    // Availability calculation based on loan state rules:
+    // - Available: No loan exists, or only historical RETURNED loans exist.
+    // - Unavailable: A REQUESTED, ISSUED, or LOST loan exists.
+    const hasUnavailableLoan = Array.isArray(item.loans)
+      ? item.loans.some((l) => ['REQUESTED', 'ISSUED', 'LOST'].includes(l.status))
+      : false;
+
+    formatted.isAvailable = !hasUnavailableLoan;
+    formatted.availability = !hasUnavailableLoan ? 'Available' : 'Unavailable';
+  }
+
+  return formatted;
 }
 
 /**
@@ -58,6 +72,9 @@ async function getItems(req, res) {
               select: { id: true, email: true, role: true },
             },
           },
+        },
+        loans: {
+          select: { id: true, status: true },
         },
       },
       orderBy: { id: 'asc' },
@@ -97,6 +114,9 @@ async function getItemById(req, res) {
               select: { id: true, email: true, role: true },
             },
           },
+        },
+        loans: {
+          select: { id: true, status: true },
         },
       },
     });
@@ -283,6 +303,9 @@ async function updateItem(req, res) {
             },
           },
         },
+        loans: {
+          select: { id: true, status: true },
+        },
       },
     });
 
@@ -319,6 +342,18 @@ async function archiveItem(req, res) {
 
     const item = await prisma.item.findUnique({
       where: { id: itemId },
+      include: {
+        custodians: {
+          include: {
+            librarian: {
+              select: { id: true, email: true, role: true },
+            },
+          },
+        },
+        loans: {
+          select: { id: true, status: true },
+        },
+      },
     });
 
     if (!item) {
@@ -344,6 +379,9 @@ async function archiveItem(req, res) {
               select: { id: true, email: true, role: true },
             },
           },
+        },
+        loans: {
+          select: { id: true, status: true },
         },
       },
     });
@@ -376,6 +414,18 @@ async function restoreItem(req, res) {
 
     const item = await prisma.item.findUnique({
       where: { id: itemId },
+      include: {
+        custodians: {
+          include: {
+            librarian: {
+              select: { id: true, email: true, role: true },
+            },
+          },
+        },
+        loans: {
+          select: { id: true, status: true },
+        },
+      },
     });
 
     if (!item) {
@@ -401,6 +451,9 @@ async function restoreItem(req, res) {
               select: { id: true, email: true, role: true },
             },
           },
+        },
+        loans: {
+          select: { id: true, status: true },
         },
       },
     });
@@ -567,7 +620,7 @@ async function importItemsCsv(req, res) {
           return item;
         });
 
-        successfulItems.push(formatItem(createdItem));
+        successfulItems.push(formatItem(createdItem, { includeAvailability: false }));
       } catch (rowErr) {
         let msg = rowErr.message;
         if (rowErr.code === 'P2002') {

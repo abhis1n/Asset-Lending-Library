@@ -3,6 +3,10 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { ErrorBanner, LoadingSpinner } from '../common/UIStates';
 
+import { computeItemAvailability } from '../../utils/availabilityUtils';
+
+export { computeItemAvailability };
+
 export function ItemDetailModal({
   isOpen,
   onClose,
@@ -15,12 +19,43 @@ export function ItemDetailModal({
   onRequestRemoveCustodian,
 }) {
   const { user } = useAuth();
+  const [detailedItem, setDetailedItem] = useState(null);
   const [librarianIdInput, setLibrarianIdInput] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState('');
 
+  const currentItem = detailedItem || item;
+
+  // Refresh item details from backend when modal opens to ensure up-to-date loan availability
+  React.useEffect(() => {
+    if (!isOpen || !item?.id) {
+      setDetailedItem(null);
+      return;
+    }
+    setDetailedItem(item);
+
+    let isMounted = true;
+    api.get(`/items/${item.id}`)
+      .then((res) => {
+        if (isMounted && res?.item) {
+          setDetailedItem(res.item);
+        }
+      })
+      .catch((err) => {
+        // Silently fall back to passed item prop
+        console.error('Failed to refresh item details:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, item?.id]);
+
+  const availabilityInfo = computeItemAvailability(currentItem);
+  const isAvailable = availabilityInfo.isAvailable;
+
   const isAssignedMyself =
-    user && item?.custodians?.some((c) => c.id === user.id);
+    user && currentItem?.custodians?.some((c) => c.id === user.id);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -33,7 +68,7 @@ export function ItemDetailModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, assigning, onClose]);
 
-  if (!isOpen || !item) return null;
+  if (!isOpen || !currentItem) return null;
 
   const handleAssignCustodian = async (targetLibrarianId) => {
     if (!targetLibrarianId) return;
@@ -41,10 +76,11 @@ export function ItemDetailModal({
     setAssignError('');
 
     try {
-      await api.post(`/items/${item.id}/custodians/${targetLibrarianId}`);
+      await api.post(`/items/${currentItem.id}/custodians/${targetLibrarianId}`);
       setLibrarianIdInput('');
       // Refresh item details
-      const updated = await api.get(`/items/${item.id}`);
+      const updated = await api.get(`/items/${currentItem.id}`);
+      setDetailedItem(updated.item);
       onItemUpdated(updated.item);
     } catch (err) {
       setAssignError(err.message || 'Failed to assign custodian.');
@@ -68,12 +104,12 @@ export function ItemDetailModal({
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 id="item-detail-modal-title" className="modal-title">{item.title}</h2>
+            <h2 id="item-detail-modal-title" className="modal-title">{currentItem.title}</h2>
             <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span className="badge-code">{item.identifyingCode}</span>
-              <span className="badge-category">{item.category}</span>
-              <span className={item.archived ? 'badge-archived' : 'badge-active'}>
-                {item.archived ? '● Archived' : '● Active'}
+              <span className="badge-code">{currentItem.identifyingCode}</span>
+              <span className="badge-category">{currentItem.category}</span>
+              <span className={currentItem.archived ? 'badge-archived' : 'badge-active'}>
+                {currentItem.archived ? '● Archived' : '● Active'}
               </span>
             </div>
           </div>
@@ -89,19 +125,25 @@ export function ItemDetailModal({
               <div>
                 <div style={{ color: 'var(--text-muted)' }}>Created At</div>
                 <div style={{ fontWeight: '600' }}>
-                  {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'}
+                  {currentItem.createdAt ? new Date(currentItem.createdAt).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
               <div>
                 <div style={{ color: 'var(--text-muted)' }}>Last Updated</div>
                 <div style={{ fontWeight: '600' }}>
-                  {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : 'N/A'}
+                  {currentItem.updatedAt ? new Date(currentItem.updatedAt).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
               <div>
-                <div style={{ color: 'var(--text-muted)' }}>Inventory Status</div>
-                <div style={{ fontWeight: '600', color: item.archived ? 'var(--text-muted)' : 'var(--success-600)' }}>
-                  {item.archived ? 'Archived (Hidden)' : 'Active (Available)'}
+                <div style={{ color: 'var(--text-muted)' }}>Availability</div>
+                <div
+                  data-testid="item-availability"
+                  style={{
+                    fontWeight: '600',
+                    color: isAvailable ? 'var(--success-600)' : 'var(--danger-600)',
+                  }}
+                >
+                  {isAvailable ? 'Available' : 'Unavailable'}
                 </div>
               </div>
             </div>
@@ -118,16 +160,16 @@ export function ItemDetailModal({
 
             <ErrorBanner message={assignError} onDismiss={() => setAssignError('')} />
 
-            {item.custodians && item.custodians.length > 0 ? (
+            {currentItem.custodians && currentItem.custodians.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-                {item.custodians.map((custodian) => (
+                {currentItem.custodians.map((custodian) => (
                   <div key={custodian.id} className="custodian-tag" style={{ padding: '0.35rem 0.65rem' }}>
                     <span>👤 {custodian.email}</span>
                     {isLibrarian && (
                       <button
                         type="button"
                         className="custodian-tag-remove"
-                        onClick={() => onRequestRemoveCustodian(item, custodian)}
+                        onClick={() => onRequestRemoveCustodian(currentItem, custodian)}
                         title={`Remove ${custodian.email} as custodian`}
                         aria-label={`Remove ${custodian.email} as custodian`}
                       >
@@ -191,11 +233,11 @@ export function ItemDetailModal({
         <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
           <div>
             {isLibrarian && (
-              item.archived ? (
+              currentItem.archived ? (
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => onRequestRestore(item)}
+                  onClick={() => onRequestRestore(currentItem)}
                 >
                   ♻️ Restore Item
                 </button>
@@ -204,7 +246,7 @@ export function ItemDetailModal({
                   type="button"
                   className="btn btn-secondary btn-sm"
                   style={{ color: 'var(--danger-600)' }}
-                  onClick={() => onRequestArchive(item)}
+                  onClick={() => onRequestArchive(currentItem)}
                 >
                   📦 Archive Item
                 </button>
@@ -219,7 +261,7 @@ export function ItemDetailModal({
                 className="btn btn-primary btn-sm"
                 onClick={() => {
                   onClose();
-                  onOpenEdit(item);
+                  onOpenEdit(currentItem);
                 }}
               >
                 ✏️ Edit Details
