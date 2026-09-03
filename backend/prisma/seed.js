@@ -158,19 +158,27 @@ async function main() {
 
   // 4. Seed Initial Loans & Histories (for comprehensive verification)
   console.log('Seeding initial sample loans and loan histories...');
+
   const now = new Date();
-  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
   const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-  const oneWeekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
 
-  // Loan 1: Active Issued Loan (Sony Camera borrowed by Alice)
+  // Loan 1: Active Issued Loan
+  // Issued one week ago, due one week from now.
+  // This is 14 days after the issue date, which is within the 1-month limit.
+  const loan1IssueDate = oneWeekAgo;
+  const loan1DueDate = new Date(
+    loan1IssueDate.getTime() + 14 * 24 * 60 * 60 * 1000
+  );
+
   const loan1 = await prisma.loan.create({
     data: {
       itemId: createdItems[0].id,
       borrowerId: member1.id,
       requestedAt: twoWeeksAgo,
-      dueDate: oneWeekAhead,
+      dueDate: loan1DueDate,
       status: LoanStatus.ISSUED,
     },
   });
@@ -188,19 +196,24 @@ async function main() {
         loanId: loan1.id,
         type: LoanHistoryType.ISSUED,
         userId: librarian1.id,
-        createdAt: oneWeekAgo,
+        createdAt: loan1IssueDate,
         note: 'Issued with 2 batteries and 64GB SD card',
       },
     ],
   });
 
-  // Loan 2: Overdue Issued Loan (Shure SM7B borrowed by Bob, due 2 days ago)
+  // Loan 2: Overdue Issued Loan
+  // Issued one week ago, due two days ago.
+  // Due date is 5 days after issue date and therefore valid.
+  const loan2IssueDate = oneWeekAgo;
+  const loan2DueDate = twoDaysAgo;
+
   const loan2 = await prisma.loan.create({
     data: {
       itemId: createdItems[2].id,
       borrowerId: member2.id,
       requestedAt: twoWeeksAgo,
-      dueDate: twoDaysAgo, // overdue because current date > dueDate
+      dueDate: loan2DueDate,
       status: LoanStatus.ISSUED,
     },
   });
@@ -218,19 +231,24 @@ async function main() {
         loanId: loan2.id,
         type: LoanHistoryType.ISSUED,
         userId: librarian2.id,
-        createdAt: oneWeekAgo,
+        createdAt: loan2IssueDate,
         note: 'Issued with XLR cable and desk mount',
       },
     ],
   });
 
-  // Loan 3: Returned Loan (Aputure Light borrowed by Charlie, returned last week)
+  // Loan 3: Returned Loan
+  // Issued two weeks ago, due one week ago.
+  // Due date is 7 days after issue date and therefore valid.
+  const loan3IssueDate = twoWeeksAgo;
+  const loan3DueDate = oneWeekAgo;
+
   const loan3 = await prisma.loan.create({
     data: {
       itemId: createdItems[4].id,
       borrowerId: member3.id,
       requestedAt: twoWeeksAgo,
-      dueDate: oneWeekAgo,
+      dueDate: loan3DueDate,
       status: LoanStatus.RETURNED,
     },
   });
@@ -248,7 +266,7 @@ async function main() {
         loanId: loan3.id,
         type: LoanHistoryType.ISSUED,
         userId: librarian1.id,
-        createdAt: twoWeeksAgo,
+        createdAt: loan3IssueDate,
         note: 'Issued with softbox and carrying case',
       },
       {
@@ -261,13 +279,18 @@ async function main() {
     ],
   });
 
-  // Loan 4: Requested Loan (DeWalt Drill requested by Alice, pending approval)
+  // Loan 4: Requested Loan
+  // Due date is 14 days after the request date.
+  const loan4DueDate = new Date(
+    now.getTime() + 14 * 24 * 60 * 60 * 1000
+  );
+
   const loan4 = await prisma.loan.create({
     data: {
       itemId: createdItems[6].id,
       borrowerId: member1.id,
       requestedAt: now,
-      dueDate: null,
+      dueDate: loan4DueDate,
       status: LoanStatus.REQUESTED,
     },
   });
