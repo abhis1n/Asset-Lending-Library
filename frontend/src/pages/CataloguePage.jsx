@@ -476,13 +476,15 @@ export function CataloguePage() {
       />
 
       {/* CSV Import Modal (Librarian) */}
-      <CsvImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        onSuccess={() => {
-          fetchItems();
-        }}
-      />
+      {isLibrarian && isImportModalOpen && (
+        <CsvImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            fetchItems();
+          }}
+        />
+      )}
 
       {/* Item Detail / Manage Custodians Modal */}
       <ItemDetailModal

@@ -51,13 +51,6 @@ export function LoginPage() {
     }
   };
 
-  const handleSelectDemoUser = (demoEmail, demoPassword) => {
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setErrors({});
-    setApiError('');
-  };
-
   return (
     <div className="login-wrapper">
       <div className="login-card">
@@ -112,40 +105,6 @@ export function LoginPage() {
             {submitting ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        {/* Demo Credentials Helper */}
-        <div className="demo-pills">
-          <p>Quick Demo Accounts</p>
-          <div className="pill-group">
-            <button
-              type="button"
-              className="pill-btn"
-              onClick={() =>
-                handleSelectDemoUser('sarah.librarian@library.org', 'Password123!')
-              }
-            >
-              👩‍💼 Librarian
-            </button>
-            <button
-              type="button"
-              className="pill-btn"
-              onClick={() =>
-                handleSelectDemoUser('alice.member@example.com', 'Password123!')
-              }
-            >
-              👤 Alice (Member)
-            </button>
-            <button
-              type="button"
-              className="pill-btn"
-              onClick={() =>
-                handleSelectDemoUser('bob.member@example.com', 'Password123!')
-              }
-            >
-              👤 Bob (Member)
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
