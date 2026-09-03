@@ -1255,11 +1255,13 @@ async function getOverdueAlerts(req, res) {
         id: true,
         itemId: true,
         borrowerId: true,
+        borrowDurationDays: true,
         requestedAt: true,
         dueDate: true,
         status: true,
         item: {
           select: {
+            id: true,
             title: true,
             identifyingCode: true,
             category: true,
@@ -1267,6 +1269,7 @@ async function getOverdueAlerts(req, res) {
         },
         borrower: {
           select: {
+            id: true,
             email: true,
           },
         },
@@ -1274,17 +1277,33 @@ async function getOverdueAlerts(req, res) {
     });
 
     const overdueLoans = loans.map((loan) => ({
+      id: loan.id,
       loanId: loan.id,
       itemId: loan.itemId,
-      itemTitle: loan.item ? loan.item.title : null,
-      identifyingCode: loan.item ? loan.item.identifyingCode : null,
-      category: loan.item ? loan.item.category : null,
       borrowerId: loan.borrowerId,
-      borrowerEmail: loan.borrower ? loan.borrower.email : null,
+      borrowDurationDays: loan.borrowDurationDays,
       requestedAt: loan.requestedAt,
       dueDate: loan.dueDate,
       status: loan.status,
       isOverdue: true,
+      item: loan.item
+        ? {
+            id: loan.item.id,
+            title: loan.item.title,
+            identifyingCode: loan.item.identifyingCode,
+            category: loan.item.category,
+          }
+        : undefined,
+      borrower: loan.borrower
+        ? {
+            id: loan.borrower.id,
+            email: loan.borrower.email,
+          }
+        : undefined,
+      itemTitle: loan.item ? loan.item.title : null,
+      identifyingCode: loan.item ? loan.item.identifyingCode : null,
+      category: loan.item ? loan.item.category : null,
+      borrowerEmail: loan.borrower ? loan.borrower.email : null,
     }));
 
     return res.status(200).json({

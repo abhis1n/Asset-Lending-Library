@@ -368,4 +368,44 @@ describe('Overdue Loan Alerts Integration Tests', () => {
     assert.strictEqual(alertData.total, dashData.overdue.total);
     assert.strictEqual(alertData.overdueLoans.length, dashData.overdue.total);
   });
+
+  // 16. Overdue alerts include related item and borrower objects for AlertsPage table
+  test('16. Overdue alerts include related item and borrower objects with required fields', async () => {
+    const timestamp = Date.now();
+    const pastDate = new Date(Date.now() - 36 * 3600 * 1000);
+
+    const { item, loan } = await seedLoan({
+      borrowerId: memberId,
+      title: `Detailed Overdue Camera ${timestamp}`,
+      category: `DetailCat-${timestamp}`,
+      identifyingCode: `DET-CAM-${timestamp}`,
+      status: LoanStatus.ISSUED,
+      dueDate: pastDate,
+    });
+
+    const res = await fetch(`${baseUrl}/api/loans/overdue?category=DetailCat-${timestamp}`, {
+      headers: { Authorization: `Bearer ${librarianToken}` },
+    });
+
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.total, 1);
+    const alert = data.overdueLoans[0];
+
+    // Primary ID for table key
+    assert.strictEqual(alert.id, loan.id);
+    assert.strictEqual(alert.loanId, loan.id);
+
+    // Related item object
+    assert.ok(alert.item, 'alert.item should be defined');
+    assert.strictEqual(alert.item.id, item.id);
+    assert.strictEqual(alert.item.title, `Detailed Overdue Camera ${timestamp}`);
+    assert.strictEqual(alert.item.identifyingCode, `DET-CAM-${timestamp}`);
+    assert.strictEqual(alert.item.category, `DetailCat-${timestamp}`);
+
+    // Related borrower object
+    assert.ok(alert.borrower, 'alert.borrower should be defined');
+    assert.strictEqual(alert.borrower.id, memberId);
+    assert.strictEqual(alert.borrower.email, 'alice.member@example.com');
+  });
 });
