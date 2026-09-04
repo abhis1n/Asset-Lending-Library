@@ -156,10 +156,22 @@ async function main() {
   }
   console.log(`Created ${custodianAssignments.length} custodian assignments.`);
 
-  // 4. Seed Initial Loans & Histories (for comprehensive verification)
+  // 4. Seed Initial Loans & Histories (covering active, overdue, requested, and 8-week return history)
   console.log('Seeding initial sample loans and loan histories...');
 
   const now = new Date();
+
+  // Helper to compute start of ISO week (Monday 00:00:00.000 UTC)
+  const getStartOfISOWeek = (d) => {
+    const date = new Date(d);
+    const day = date.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    date.setUTCDate(date.getUTCDate() + diff);
+    date.setUTCHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const currentWeekStart = getStartOfISOWeek(now);
 
   const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -239,18 +251,19 @@ async function main() {
     ],
   });
 
-  // Loan 3: Returned Loan
+  // Loan 3: Returned Loan (Week -1 / 1 week ago)
   // Issued two weeks ago, due one week ago.
-  // Due date is 7 days after issue date and therefore valid.
-  const loan3IssueDate = twoWeeksAgo;
-  const loan3DueDate = oneWeekAgo;
+  const loan3ReturnDate = new Date(currentWeekStart.getTime() - 4 * 24 * 60 * 60 * 1000);
+  const loan3IssueDate = new Date(loan3ReturnDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const loan3RequestedAt = new Date(loan3IssueDate.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const loan3DueDate = loan3ReturnDate;
 
   const loan3 = await prisma.loan.create({
     data: {
       itemId: createdItems[4].id,
       borrowerId: member3.id,
       borrowDurationDays: 7,
-      requestedAt: twoWeeksAgo,
+      requestedAt: loan3RequestedAt,
       dueDate: loan3DueDate,
       status: LoanStatus.RETURNED,
     },
@@ -262,7 +275,7 @@ async function main() {
         loanId: loan3.id,
         type: LoanHistoryType.REQUESTED,
         userId: member3.id,
-        createdAt: twoWeeksAgo,
+        createdAt: loan3RequestedAt,
         note: 'Studio interview lighting',
       },
       {
@@ -276,7 +289,7 @@ async function main() {
         loanId: loan3.id,
         type: LoanHistoryType.RETURNED,
         userId: librarian1.id,
-        createdAt: oneWeekAgo,
+        createdAt: loan3ReturnDate,
         note: 'Returned in good condition',
       },
     ],
@@ -311,6 +324,128 @@ async function main() {
       note: 'Need for assembling shelving units',
     },
   });
+
+  // Helper to create historical returned loans covering the 8-week return chart
+  // Ensures all borrowing rules (mandatory dueDate, non-overlapping items, valid status & histories) are met.
+  const historicalReturns = [
+    // Week 0 (Current Week): 1 return
+    {
+      item: createdItems[1], // Canon EOS R5
+      borrower: member2,
+      librarian: librarian1,
+      returnDate: new Date(currentWeekStart.getTime() + 60 * 1000), // 1 min into Monday
+      durationDays: 7,
+      requestNote: 'Client headshot session',
+      returnNote: 'Returned on schedule in pristine condition',
+    },
+    // Week -2 (2 weeks ago): 2 returns
+    {
+      item: createdItems[3], // Rode Wireless GO II
+      borrower: member1,
+      librarian: librarian2,
+      returnDate: new Date(currentWeekStart.getTime() - 10 * 24 * 60 * 60 * 1000),
+      durationDays: 7,
+      requestNote: 'Outdoor vlog audio capture',
+      returnNote: 'All transmitters and cables returned verified',
+    },
+    {
+      item: createdItems[5], // Epson Projector
+      borrower: member3,
+      librarian: librarian1,
+      returnDate: new Date(currentWeekStart.getTime() - 12 * 24 * 60 * 60 * 1000),
+      durationDays: 5,
+      requestNote: 'Community workshop presentation',
+      returnNote: 'Returned with power cable and HDMI adapter',
+    },
+    // Week -3 (3 weeks ago): 0 returns (Intentionally 0 to verify zero-fill requirement)
+
+    // Week -4 (4 weeks ago): 1 return
+    {
+      item: createdItems[7], // DJI RS 3 Pro Gimbal
+      borrower: member2,
+      librarian: librarian2,
+      returnDate: new Date(currentWeekStart.getTime() - 25 * 24 * 60 * 60 * 1000),
+      durationDays: 7,
+      requestNote: 'Music video production',
+      returnNote: 'Returned cleanly balanced with briefcase',
+    },
+    // Week -5 (5 weeks ago): 1 return
+    {
+      item: createdItems[1], // Canon EOS R5 (sequential loan earlier in time)
+      borrower: member1,
+      librarian: librarian1,
+      returnDate: new Date(currentWeekStart.getTime() - 32 * 24 * 60 * 60 * 1000),
+      durationDays: 7,
+      requestNote: 'Architecture photo documentary',
+      returnNote: 'Returned with clean sensor and lens cap',
+    },
+    // Week -6 (6 weeks ago): 1 return
+    {
+      item: createdItems[3], // Rode Wireless GO II (sequential loan earlier in time)
+      borrower: member3,
+      librarian: librarian2,
+      returnDate: new Date(currentWeekStart.getTime() - 39 * 24 * 60 * 60 * 1000),
+      durationDays: 7,
+      requestNote: 'Panel discussion recording',
+      returnNote: 'Checked back in without issues',
+    },
+    // Week -7 (7 weeks ago, oldest): 1 return
+    {
+      item: createdItems[5], // Epson Projector (sequential loan earlier in time)
+      borrower: member2,
+      librarian: librarian1,
+      returnDate: new Date(currentWeekStart.getTime() - 46 * 24 * 60 * 60 * 1000),
+      durationDays: 7,
+      requestNote: 'Film society screening',
+      returnNote: 'Returned on time and tested lamp hours',
+    },
+  ];
+
+  for (const hr of historicalReturns) {
+    const returnDate = hr.returnDate;
+    const issueDate = new Date(returnDate.getTime() - hr.durationDays * 24 * 60 * 60 * 1000);
+    const requestedAt = new Date(issueDate.getTime() - 2 * 24 * 60 * 60 * 1000);
+    const dueDate = new Date(issueDate.getTime() + hr.durationDays * 24 * 60 * 60 * 1000);
+
+    const loan = await prisma.loan.create({
+      data: {
+        itemId: hr.item.id,
+        borrowerId: hr.borrower.id,
+        borrowDurationDays: hr.durationDays,
+        requestedAt,
+        dueDate,
+        status: LoanStatus.RETURNED,
+      },
+    });
+
+    await prisma.loanHistory.createMany({
+      data: [
+        {
+          loanId: loan.id,
+          type: LoanHistoryType.REQUESTED,
+          userId: hr.borrower.id,
+          createdAt: requestedAt,
+          note: hr.requestNote,
+        },
+        {
+          loanId: loan.id,
+          type: LoanHistoryType.ISSUED,
+          userId: hr.librarian.id,
+          createdAt: issueDate,
+          note: `Issued for ${hr.durationDays} days`,
+        },
+        {
+          loanId: loan.id,
+          type: LoanHistoryType.RETURNED,
+          userId: hr.librarian.id,
+          createdAt: returnDate,
+          note: hr.returnNote,
+        },
+      ],
+    });
+  }
+
+  console.log(`Seeded ${historicalReturns.length + 4} total loans with 8-week return history.`);
 
   console.log('Sample loans and histories created successfully.');
   console.log('--- Database Seeding Completed ---');

@@ -572,6 +572,40 @@ body {
   background-color: #fef2f2;
 }
 
+/* Weekly Returns Chart */
+.weekly-chart-card {
+  margin-bottom: 2rem;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.chart-tooltip-indicator {
+  background-color: var(--bg-app);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  transition: all 0.2s ease;
+}
+
+.weekly-returns-svg {
+  user-select: none;
+}
+
+.chart-column-group {
+  transition: opacity 0.15s ease;
+}
+
+.chart-column-group:hover rect {
+  cursor: pointer;
+}
+
+.chart-column-group:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
 .dashboard-sections-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));

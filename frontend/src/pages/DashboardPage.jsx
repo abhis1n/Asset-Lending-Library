@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Link } from '../router/Router';
 import { LoadingSpinner, ErrorBanner } from '../components/common/UIStates';
+import { WeeklyReturnsChart } from '../components/dashboard/WeeklyReturnsChart';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -42,10 +43,11 @@ export function DashboardPage() {
     );
   }
 
-  const { catalogue, loans, overdue } = data || {
+  const { catalogue, loans, overdue, weeklyReturns } = data || {
     catalogue: { total: 0, active: 0, archived: 0 },
     loans: { requested: 0, issued: 0, returned: 0, lost: 0, open: 0 },
     overdue: { total: 0, nonOverdueIssued: 0 },
+    weeklyReturns: [],
   };
 
   const hasOverdue = overdue.total > 0;
@@ -177,6 +179,11 @@ export function DashboardPage() {
             {loans.lost} items marked lost
           </div>
         </div>
+      </div>
+
+      {/* 8-Week Item Return Chart */}
+      <div style={{ marginBottom: '2rem' }}>
+        <WeeklyReturnsChart weeklyReturns={weeklyReturns} />
       </div>
 
       {/* Detailed Operational Sections */}
