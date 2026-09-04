@@ -197,6 +197,30 @@ export function CreateLoanModal({ isOpen, onClose, onSuccess }) {
               </div>
             ) : (
               <>
+                {!isLibrarian && (
+                  <div
+                    data-testid="borrowing-limit-info"
+                    style={{
+                      backgroundColor: 'var(--primary-50, #eff6ff)',
+                      border: '1px solid var(--primary-200, #bfdbfe)',
+                      borderRadius: 'var(--radius-md, 6px)',
+                      padding: '0.625rem 0.875rem',
+                      marginBottom: '1rem',
+                      fontSize: '0.8125rem',
+                      color: 'var(--primary-800, #1e40af)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      lineHeight: '1.4',
+                    }}
+                  >
+                    <span aria-hidden="true">ℹ️</span>
+                    <span>
+                      <strong>Borrowing limit:</strong> Members may have a maximum of <strong>2 active items</strong> (requested or issued combined) at any time.
+                    </span>
+                  </div>
+                )}
+
                 {/* Item Selector */}
                 <div className="form-group">
                   <label className="form-label" htmlFor="loan-item-select">

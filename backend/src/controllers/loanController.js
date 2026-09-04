@@ -83,7 +83,28 @@ async function requestLoan(req, res) {
 
     // Execute atomic transaction with pessimistic row-level locking
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Lock the item row to serialize concurrent loan requests for the same item
+      // 1. Lock borrower row to serialize concurrent loan requests for the same member
+      await tx.$queryRaw`
+        SELECT id FROM users WHERE id = ${borrowerId} FOR UPDATE
+      `;
+
+      // 2. Check active loan limit for member (max 2 active loans: REQUESTED or ISSUED)
+      const activeLoansCount = await tx.loan.count({
+        where: {
+          borrowerId,
+          status: { in: [LoanStatus.REQUESTED, LoanStatus.ISSUED] },
+        },
+      });
+
+      if (activeLoansCount >= 2) {
+        throw {
+          status: 409,
+          message:
+            'You cannot borrow this item because you already have 2 requested or issued items, which is the borrowing limit.',
+        };
+      }
+
+      // 3. Lock the item row to serialize concurrent loan requests for the same item
       const itemRows = await tx.$queryRaw`
         SELECT id, archived, title FROM items WHERE id = ${parsedItemId} FOR UPDATE
       `;
