@@ -64,7 +64,7 @@ model Loan {
   borrowerId         Int
   borrowDurationDays Int         @default(14)
   requestedAt        DateTime    @default(now())
-  dueDate            DateTime?
+  dueDate            DateTime
   status             LoanStatus  @default(REQUESTED)
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
